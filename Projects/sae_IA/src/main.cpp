@@ -1,94 +1,117 @@
 #include "M5Unified.h"
 #include "M5GFX.h"
+#include "mnist_float32.h"
 
 M5GFX display;
-uint8_t image28x28[28][28]; // Notre matrice de travail
+uint8_t image28x28[28][28];
 
-// Fonction pour afficher le tableau 2D dans le terminal série
-void displayTerminal() {
-  Serial.println("\n--- Capture 28x28 ---");
-  for (int y = 0; y < 28; y++) {
-    for (int x = 0; x < 28; x++) {
-      if (image28x28[y][x] == 1) {
-        Serial.print("s "); // Pixel dessiné
-      } else {
-        Serial.print(". "); // Pixel vide
-      }
+void clearImageBuffer() {
+    for (int y = 0; y < 28; y++) {
+        for (int x = 0; x < 28; x++) image28x28[y][x] = 0;
     }
-    Serial.println(); // Nouvelle ligne
-  }
-  Serial.println("---------------------\n");
 }
 
-// Fonction pour vider le tableau (remettre à zéro)
-void clearImageBuffer() {
-  for (int y = 0; y < 28; y++) {
-    for (int x = 0; x < 28; x++) {
-      image28x28[y][x] = 0;
+void displayTerminal(float processed[28][28]) {
+    Serial.println("\n--- Aperçu 28x28 (Pre-processed) ---");
+    for (int y = 0; y < 28; y++) {
+        for (int x = 0; x < 28; x++) {
+            if (processed[y][x] == 1.0f) Serial.print("s ");      // 's' pour le plein
+            else if (processed[y][x] == 0.5f) Serial.print(". "); // '.' pour le gris/pointillé
+            else Serial.print("  ");                             // Vide
+        }
+        Serial.println();
     }
-  }
+    Serial.println("------------------------------------\n");
+}
+
+void preprocess(float output[28][28]) {
+    for (int y = 0; y < 28; y++) {
+        for (int x = 0; x < 28; x++) output[y][x] = 0.0f;
+    }
+    for (int y = 0; y < 28; y++) {
+        for (int x = 0; x < 28; x++) {
+            if (image28x28[y][x] == 1) {
+                output[y][x] = 1.0f;
+                int dy[] = {-1, 1, 0, 0}, dx[] = {0, 0, -1, 1};
+                for (int i = 0; i < 4; i++) {
+                    int ny = y + dy[i], nx = x + dx[i];
+                    if (ny >= 0 && ny < 28 && nx >= 0 && nx < 28) {
+                        if (output[ny][nx] < 1.0f) output[ny][nx] = 0.5f;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void setup(void) {
-  auto cfg = M5.config();
-  M5.begin(cfg);
-  
-  // INITIALISATION DU TERMINAL SÉRIE (Indispensable)
-  Serial.begin(115200);
-  
-  display.init();
-  display.setFont(&fonts::Font4);
-  display.setTextColor(TFT_WHITE);
-
-  if (!display.touch()) {
-    display.setTextDatum(textdatum_t::middle_center);
-    display.drawString("Touch not found.", display.width() / 2, display.height() / 2);
-  }
-
-  display.clear();
-  clearImageBuffer();
-  Serial.println("Pret ! Dessinez un chiffre sur l'ecran.");
+    auto cfg = M5.config();
+    M5.begin(cfg);
+    Serial.begin(115200);
+    display.init();
+    display.clear();
+    clearImageBuffer();
+    Serial.println("Systeme pret.");
 }
 
 void loop(void) {
-  static bool drawed = false;
-  lgfx::touch_point_t tp[3];
+    static bool drawed = false;
+    lgfx::touch_point_t tp[3];
+    int nums = display.getTouchRaw(tp, 3);
 
-  int nums = display.getTouchRaw(tp, 3);
+    // VARIABLES STATIQUES : Elles ne sont plus sur la pile (Stack)
+    // Cela evite le Guru Meditation Error / Stack Overflow
+    static float processed[28][28]; 
+    static input_t input_data;
+    static dense_4_output_type scores;
 
-  if (nums > 0) {
-    display.convertRawXY(tp, nums);
+    if (nums > 0) {
+        display.convertRawXY(tp, nums);
+        for (int i = 0; i < nums; ++i) {
+            display.fillCircle(tp[i].x, tp[i].y, 6, TFT_WHITE);
+            int ix = (tp[i].x * 28) / display.width();
+            int iy = (tp[i].y * 28) / display.height();
+            if (ix >= 0 && ix < 28 && iy >= 0 && iy < 28) image28x28[iy][ix] = 1;
+        }
+        drawed = true;
+    } 
+    else if (drawed) {
+        Serial.println("Lancement de l'inference...");
 
-    for (int i = 0; i < nums; ++i) {
-      // 1. Dessin sur l'écran (pour l'utilisateur)
-      display.fillCircle(tp[i].x, tp[i].y, 8, TFT_WHITE);
+        preprocess(processed);
+        displayTerminal(processed);
 
-      // 2. Enregistrement dans le tableau 28x28
-      // On mappe 320px -> 28 et 240px -> 28
-      int ix = (tp[i].x * 28) / display.width();
-      int iy = (tp[i].y * 28) / display.height();
+        // Preparation des donnees
+        for (int y = 0; y < 28; y++) {
+            for (int x = 0; x < 28; x++) {
+                input_data[y][x][0] = processed[y][x];
+            }
+        }
 
-      if (ix >= 0 && ix < 28 && iy >= 0 && iy < 28) {
-        image28x28[iy][ix] = 1; 
-      }
+        // Appel du CNN
+        cnn(input_data, scores);
+
+        // Recherche du max
+        float max_val = scores[0];
+        int prediction = 0;
+        for (int i = 1; i < 10; i++) {
+            if (scores[i] > max_val) {
+                max_val = scores[i];
+                prediction = i;
+            }
+        }
+
+        Serial.printf("PREDICTION : %d (Score: %.2f)\n", prediction, max_val);
+        
+        // Affichage sur l'ecran
+        display.setFont(&fonts::Font7);
+        display.setTextColor(TFT_GREEN, TFT_BLACK);
+        display.drawCenterString(String(prediction), display.width()/2, display.height()/2 - 20);
+        
+        delay(2000);
+        display.clear();
+        clearImageBuffer();
+        drawed = false;
     }
-    drawed = true;
-  } 
-  else if (drawed) {
-    // L'utilisateur vient de lever le doigt
-    
-    // 3. Affichage du tableau dans le terminal
-    displayTerminal();
-
-    // Pause pour laisser le temps de voir
-    delay(1000); 
-
-    // 4. Reset pour le prochain dessin
-    drawed = false;
-    display.clear();
-    clearImageBuffer();
-    Serial.println("Tableau vide. Dessinez a nouveau.");
-  }
-  
-  vTaskDelay(1);
+    vTaskDelay(1);
 }
