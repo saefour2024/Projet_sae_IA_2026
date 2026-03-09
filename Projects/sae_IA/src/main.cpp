@@ -1,29 +1,34 @@
 #include "M5Unified.h"
 #include "M5GFX.h"
-#include "mnist_float32.h"
+#include "mnist_float32.h" // Assure-toi que ce fichier est bien à jour dans ton dossier src
 
 M5GFX display;
 uint8_t image28x28[28][28];
 
+// Vide le tableau
 void clearImageBuffer() {
     for (int y = 0; y < 28; y++) {
         for (int x = 0; x < 28; x++) image28x28[y][x] = 0;
     }
 }
 
+// Affichage demandé : 's' pour le tracé, '.' pour le reste (grille)
 void displayTerminal(float processed[28][28]) {
     Serial.println("\n--- Aperçu 28x28 (Pre-processed) ---");
     for (int y = 0; y < 28; y++) {
         for (int x = 0; x < 28; x++) {
-            if (processed[y][x] == 1.0f) Serial.print("s ");      // 's' pour le plein
-            else if (processed[y][x] == 0.5f) Serial.print(". "); // '.' pour le gris/pointillé
-            else Serial.print("  ");                             // Vide
+            if (processed[y][x] == 1.0f) {
+                Serial.print("s "); // Tracé principal
+            } else {
+                Serial.print(". "); // Grille de pointillés (fond et gris 0.5)
+            }
         }
         Serial.println();
     }
     Serial.println("------------------------------------\n");
 }
 
+// Pre-processing : épaississement du trait
 void preprocess(float output[28][28]) {
     for (int y = 0; y < 28; y++) {
         for (int x = 0; x < 28; x++) output[y][x] = 0.0f;
@@ -51,7 +56,7 @@ void setup(void) {
     display.init();
     display.clear();
     clearImageBuffer();
-    Serial.println("Systeme pret.");
+    Serial.println("Système prêt.");
 }
 
 void loop(void) {
@@ -59,11 +64,11 @@ void loop(void) {
     lgfx::touch_point_t tp[3];
     int nums = display.getTouchRaw(tp, 3);
 
-    // VARIABLES STATIQUES : Elles ne sont plus sur la pile (Stack)
-    // Cela evite le Guru Meditation Error / Stack Overflow
+    // Utilisation de STATIC pour éviter le Stack Overflow
     static float processed[28][28]; 
     static input_t input_data;
-    static dense_4_output_type scores;
+    // CORRECTION ICI : dense_8_output_type au lieu de dense_4
+    static dense_8_output_type scores; 
 
     if (nums > 0) {
         display.convertRawXY(tp, nums);
@@ -81,17 +86,15 @@ void loop(void) {
         preprocess(processed);
         displayTerminal(processed);
 
-        // Preparation des donnees
         for (int y = 0; y < 28; y++) {
             for (int x = 0; x < 28; x++) {
                 input_data[y][x][0] = processed[y][x];
             }
         }
 
-        // Appel du CNN
+        // Appel de la fonction cnn avec le nouveau type de scores
         cnn(input_data, scores);
 
-        // Recherche du max
         float max_val = scores[0];
         int prediction = 0;
         for (int i = 1; i < 10; i++) {
@@ -103,7 +106,6 @@ void loop(void) {
 
         Serial.printf("PREDICTION : %d (Score: %.2f)\n", prediction, max_val);
         
-        // Affichage sur l'ecran
         display.setFont(&fonts::Font7);
         display.setTextColor(TFT_GREEN, TFT_BLACK);
         display.drawCenterString(String(prediction), display.width()/2, display.height()/2 - 20);
