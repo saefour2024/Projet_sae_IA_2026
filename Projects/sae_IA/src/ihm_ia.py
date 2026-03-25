@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk
 
 # --- CONFIGURATION ---
-SERIAL_PORT = "COM8"  # <--- À vérifier dans ton gestionnaire de périphériques
+SERIAL_PORT = "COM8"  
 BAUD_RATE = 921600    # <--- Haute vitesse pour la fluidité
 
 class AppIA:
