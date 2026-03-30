@@ -15,8 +15,8 @@
 #include <stdint.h>
 #endif
 
-#define INPUT_SAMPLES 576
-#define FC_UNITS 100
+#define INPUT_SAMPLES 784
+#define FC_UNITS 32
 
 typedef float dense_2_output_type[FC_UNITS];
 

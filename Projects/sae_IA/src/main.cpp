@@ -1,20 +1,30 @@
 #include "M5Unified.h"
 #include "M5GFX.h"
-#include "mnist_int16.h" // TON NOUVEAU MODÈLE INT16
+#include "mnist_fixed_int16.h" // Vérifie bien que ton fichier s'appelle ainsi
+#include <WiFi.h>
 #include <math.h> 
+
+// --- CONFIGURATION POINT D'ACCÈS (AP) ---
+const char* ap_ssid = "ESP32_IA_PROJECT";
+const char* ap_pass = "GeiiTailscale2024$"; 
+
+WiFiServer server(5005); // Serveur TCP sur le port 5005
+WiFiClient client;
 
 M5GFX display;
 uint8_t image28x28[28][28]; 
 
-// Réinitialisation du dessin
+// Réinitialisation du dessin et notification à l'IHM
 void clearImageBuffer() {
     for (int y = 0; y < 28; y++) {
         for (int x = 0; x < 28; x++) image28x28[y][x] = 0;
     }
-    Serial.println("CLR"); // Effacer IHM Python
+    if (client && client.connected()) {
+        client.println("CLR");
+    }
 }
 
-// --- PRE-PROCESSING : CADRAGE ET CENTRAGE ---
+// Pré-traitement : Cadrage et Redimensionnement
 void preprocess(float output[28][28]) {
     for (int y = 0; y < 28; y++) for (int x = 0; x < 28; x++) output[y][x] = 0.0f;
     int x_min = 28, x_max = 0, y_min = 28, y_max = 0;
@@ -41,18 +51,43 @@ void preprocess(float output[28][28]) {
 void setup(void) {
     auto cfg = M5.config();
     M5.begin(cfg);
-    Serial.begin(921600); // Haute vitesse pour fluidité
+    Serial.begin(115200);
+
     display.init();
     display.clear();
-    clearImageBuffer();
+    
+    // Initialisation du Point d'Accès (AP)
+    WiFi.softAP(ap_ssid, ap_pass);
+    server.begin();
+
+    display.setCursor(10, 10);
+    display.setTextSize(1.5);
+    display.println("MODE POINT D'ACCES");
+    display.printf("SSID: %s\n", ap_ssid);
+    display.printf("IP: %s\n", WiFi.softAPIP().toString().c_str());
+    display.println("Attente connexion PC...");
 }
 
 void loop(void) {
     M5.update();
+    
+    // Gestion de la connexion du PC (Client TCP)
+    if (!client || !client.connected()) {
+        client = server.available();
+        if (client) {
+            display.clear();
+            display.setCursor(10, 10);
+            display.println("PC CONNECTE !");
+            delay(1000);
+            display.clear();
+        }
+    }
+
     static bool drawed = false;
     lgfx::touch_point_t tp[3];
     int nums = display.getTouchRaw(tp, 3);
 
+    // Capture tactile et envoi temps réel
     if (nums > 0) {
         display.convertRawXY(tp, nums);
         for (int i = 0; i < nums; ++i) {
@@ -61,58 +96,59 @@ void loop(void) {
             int iy = (tp[i].y * 28) / display.height();
             if (ix >= 0 && ix < 28 && iy >= 0 && iy < 28 && image28x28[iy][ix] == 0) {
                 image28x28[iy][ix] = 1;
-                Serial.printf("P:%d,%d\n", ix, iy); // Envoi point pour IHM
+                // Envoi immédiat du point au PC pour fluidité
+                if (client && client.connected()) {
+                    client.printf("P:%d,%d\n", ix, iy);
+                }
             }
         }
         drawed = true;
     } 
+    // Fin du tracé -> Inférence
     else if (drawed) {
-        // --- CHRONO PRE-PROCESSING ---
         unsigned long tStartPre = micros();
         static float processed[28][28]; 
         preprocess(processed);
         unsigned long tPre = (micros() - tStartPre) / 1000;
 
-        // --- CONVERSION FLOAT -> INT16 (QUANTIFICATION) ---
-        // Le scale_factor est de 8, donc on multiplie par 2^8 = 256
-        static input_t input_data; // input_t est maintenant int16_t[28][28][1]
+        // Préparation des données pour le modèle int16 (Scale factor 8 -> *256)
+        static input_t input_data;
         for (int y = 0; y < 28; y++) {
             for (int x = 0; x < 28; x++) {
-                input_data[y][x][0] = (int16_t)(processed[y][x] * 256.0f); 
+                input_data[y][x][0] = (int16_t)(processed[y][x] * 256.0f);
             }
         }
 
-        // --- CHRONO INFÉRENCE IA (INT16) ---
+        // Inférence CNN
         unsigned long tStartCNN = millis();
-        static dense_10_output_type scores; // dense_output_type est maintenant int16_t[10]
+        static dense_output_type scores; 
         cnn(input_data, scores);
         unsigned long tCNN = millis() - tStartCNN;
 
-        // --- CALCUL SOFTMAX (AVEC DÉ-QUANTIFICATION) ---
-        float sum_exp = 0;
-        float probabilities[10];
+        // Softmax avec dé-quantification
+        float sum_exp = 0; float probabilities[10];
         for (int i = 0; i < 10; i++) {
-            // On divise par 256.0f pour retrouver l'échelle réelle des scores avant l'exponentielle
             probabilities[i] = expf((float)scores[i] / 256.0f); 
             sum_exp += probabilities[i];
         }
-        float max_prob = 0;
-        int prediction = 0;
+        float max_prob = 0; int prediction = 0;
         for (int i = 0; i < 10; i++) {
             probabilities[i] /= sum_exp;
-            if (probabilities[i] > max_prob) {
-                max_prob = probabilities[i];
-                prediction = i;
+            if (probabilities[i] > max_prob) { 
+                max_prob = probabilities[i]; 
+                prediction = i; 
             }
         }
 
-        // --- ENVOI RÉSULTATS (Format DATA) ---
+        // Envoi des résultats complets à l'IHM Python
         int batLevel = M5.Power.getBatteryLevel();
         bool isCharging = M5.Power.isCharging();
-        Serial.printf("DATA:Digit:%d,Conf:%.1f,tIA:%lu,tPre:%lu,Bat:%d,Chg:%d\n", 
-                     prediction, max_prob * 100.0f, tCNN, tPre, batLevel, (int)isCharging);
+        if (client && client.connected()) {
+            client.printf("DATA:Digit:%d,Conf:%.1f,tIA:%lu,tPre:%lu,Bat:%d,Chg:%d\n", 
+                         prediction, max_prob * 100.0f, tCNN, tPre, batLevel, (int)isCharging);
+        }
 
-        // --- AFFICHAGE ÉCRAN ---
+        // Affichage local sur le M5Stack
         display.clear();
         display.setTextColor(TFT_GREEN, TFT_BLACK);
         display.setFont(&fonts::Font7);
@@ -120,15 +156,8 @@ void loop(void) {
         
         display.setFont(&fonts::Font4);
         display.drawCenterString(String(max_prob*100, 1) + "%", display.width()/2, 110);
-        
-        display.setTextColor(TFT_WHITE, TFT_BLACK);
-        display.setFont(&fonts::Font2);
-        display.setCursor(10, 180);
-        display.printf("IA(int16): %lu ms | Pre: %lu ms", tCNN, tPre);
-        display.setCursor(10, 205);
-        display.printf("Batterie: %d%% %s", batLevel, isCharging ? "(Charge)" : "");
 
-        delay(1500); // 1.5 seconde de lecture
+        delay(1500); // Pause pour lecture
         display.clear();
         clearImageBuffer();
         drawed = false;

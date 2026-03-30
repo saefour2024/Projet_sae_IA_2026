@@ -1,0 +1,1823 @@
+#define SINGLE_FILE
+/**
+  ******************************************************************************
+  * @file    defines.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, Université Côte d'Azur, LEAT, France
+  * @version 2.1.0
+  * @date    10 january 2024
+  * @brief   Global C pre-processor definitions to use to build all source files (incl. CMSIS-NN)
+  */
+
+/* CMSIS-NN round mode definition */
+#if defined(WITH_CMSIS_NN) || defined(WITH_NMSIS_NN)
+
+
+#define ARM_NN_TRUNCATE 1
+#define RISCV_NN_TRUNCATE 1
+
+#endif // defined(WITH_CMSIS_NN) || defined(WITH_NMSIS_NN)
+/**
+  ******************************************************************************
+  * @file    number.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    2 february 2021
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef __NUMBER_H__
+#define __NUMBER_H__
+
+#include <stdint.h>
+#include <stddef.h>
+#include <math.h>
+
+#ifdef TRAPV_SHIFT
+#include <limits.h>
+#include <stdio.h>
+#include <assert.h>
+#endif
+
+#ifdef WITH_CMSIS_NN
+#include "arm_nnfunctions.h"
+#endif
+
+#define _clamp_to(type, number) clamp_to_number_t_ ## type (number)
+#define clamp_to(type, number) _clamp_to(type, number)
+#define _scale(type, number, scale_factor, round_mode) scale_number_t_ ## type (number, scale_factor, round_mode)
+#define scale(type, number, scale_factor, round_mode) _scale(type, number, scale_factor, round_mode)
+#define _scale_and_clamp_to(type, number, scale_factor, round_mode) scale_and_clamp_to_number_t_ ## type (number, scale_factor, round_mode)
+#define scale_and_clamp_to(type, number, scale_factor, round_mode) _scale_and_clamp_to(type, number, scale_factor, round_mode)
+
+typedef enum {
+  ROUND_MODE_NONE,
+  ROUND_MODE_FLOOR,
+  ROUND_MODE_NEAREST,
+} round_mode_t;
+
+// Idea 1: Write the smallest min max interval of the net, could be an issue for hybrid int type network
+// Idea 2: listing any interval and add type in name in a switch case like <- better but painfull
+// #define NUMBER_MIN		// Max value for this numeric type
+// #define NUMBER_MAX		// Min value for this numeric type
+
+// // Idea 1: List of all types and write any corresponding function 
+// typedef  number_t;		// Standard size numeric type used for weights and activations
+// typedef  long_number_t;	// Long numeric type used for intermediate results
+
+#define NUMBER_MIN_INT32_T -2147483648
+#define NUMBER_MAX_INT32_T 2147483647
+
+static inline int64_t min_int32_t(
+    int64_t a,
+    int64_t b) {
+	if (a <= b)
+		return a;
+	return b;
+}
+
+static inline int64_t max_int32_t(
+    int64_t a,
+    int64_t b) {
+	if (a >= b)
+		return a;
+	return b;
+}
+
+static inline int64_t scale_number_t_int32_t(
+  int64_t number, int scale_factor, round_mode_t round_mode) {
+
+
+  if (scale_factor <= 0) {
+#ifdef TRAPV_SHIFT
+    // Check for possible overflow of left shift
+    if (number > INT64_MAX >> -scale_factor) {
+      fprintf(stderr,
+              "Error: scale() overflow, number=%ld, scale_factor=%d, limit=%d\n",
+              number,
+              scale_factor,
+              INT16_MAX >> -scale_factor);
+      assert(number <= INT64_MAX >> -scale_factor);
+    }
+#endif
+    // No rounding to apply when shifting left
+    return number << - scale_factor;
+  } else {
+    if (round_mode == ROUND_MODE_NEAREST) {
+      number += (1 << (scale_factor - 1)); // +0.5 in fixed-point
+    }
+    return number >> scale_factor;
+  }
+}
+static inline int32_t clamp_to_number_t_int32_t(
+  int64_t number) {
+	return (int32_t) max_int32_t(
+      NUMBER_MIN_INT32_T,
+      min_int32_t(
+        NUMBER_MAX_INT32_T, number));
+}
+static inline int32_t scale_and_clamp_to_number_t_int32_t(
+  int64_t number, int scale_factor, round_mode_t round_mode) {
+#ifdef WITH_CMSIS_NN
+  // Not really CMSIS-NN but use SSAT anyway
+  if (scale_factor <= 0) {
+    // No rounding to apply when shifting left
+    return __SSAT(number << - scale_factor, sizeof(int32_t) * 8);
+  } else {
+    if (round_mode == ROUND_MODE_NEAREST) {
+      number += (1 << (scale_factor - 1)); // +0.5 in fixed-point
+    }
+    return __SSAT(number >> scale_factor, sizeof(int32_t) * 8);
+  }
+#else
+  number = scale_number_t_int32_t(number, scale_factor, round_mode);
+  return clamp_to_number_t_int32_t(number);
+#endif
+}
+
+#define NUMBER_MIN_INT16_T -32768
+#define NUMBER_MAX_INT16_T 32767
+
+static inline int32_t min_int16_t(
+    int32_t a,
+    int32_t b) {
+	if (a <= b)
+		return a;
+	return b;
+}
+
+static inline int32_t max_int16_t(
+    int32_t a,
+    int32_t b) {
+	if (a >= b)
+		return a;
+	return b;
+}
+
+static inline int32_t scale_number_t_int16_t(
+  int32_t number, int scale_factor, round_mode_t round_mode) {
+
+
+  if (scale_factor <= 0) {
+#ifdef TRAPV_SHIFT
+    // Check for possible overflow of left shift
+    if (number > INT32_MAX >> -scale_factor) {
+      fprintf(stderr,
+              "Error: scale() overflow, number=%d, scale_factor=%d, limit=%d\n",
+              number,
+              scale_factor,
+              INT16_MAX >> -scale_factor);
+      assert(number <= INT32_MAX >> -scale_factor);
+    }
+#endif
+    // No rounding to apply when shifting left
+    return number << - scale_factor;
+  } else {
+    if (round_mode == ROUND_MODE_NEAREST) {
+      number += (1 << (scale_factor - 1)); // +0.5 in fixed-point
+    }
+    return number >> scale_factor;
+  }
+}
+static inline int16_t clamp_to_number_t_int16_t(
+  int32_t number) {
+	return (int16_t) max_int16_t(
+      NUMBER_MIN_INT16_T,
+      min_int16_t(
+        NUMBER_MAX_INT16_T, number));
+}
+static inline int16_t scale_and_clamp_to_number_t_int16_t(
+  int32_t number, int scale_factor, round_mode_t round_mode) {
+#ifdef WITH_CMSIS_NN
+  // Not really CMSIS-NN but use SSAT anyway
+  if (scale_factor <= 0) {
+    // No rounding to apply when shifting left
+    return __SSAT(number << - scale_factor, sizeof(int16_t) * 8);
+  } else {
+    if (round_mode == ROUND_MODE_NEAREST) {
+      number += (1 << (scale_factor - 1)); // +0.5 in fixed-point
+    }
+    return __SSAT(number >> scale_factor, sizeof(int16_t) * 8);
+  }
+#else
+  number = scale_number_t_int16_t(number, scale_factor, round_mode);
+  return clamp_to_number_t_int16_t(number);
+#endif
+}
+
+
+
+
+static inline void int64_t_to_float(int64_t * tabint, float * tabfloat, long tabdim, int scale_factor){
+  for (int i=0; i<tabdim; i++){
+    tabfloat[i] = (float)tabint[i] / (1<<scale_factor);
+  }
+}
+
+static inline void int32_t_to_float(int32_t * tabint, float * tabfloat, long tabdim, int scale_factor){
+  for (int i=0; i<tabdim; i++){
+    tabfloat[i] = (float)tabint[i] / (1<<scale_factor);
+  }
+}
+
+static inline void int16_t_to_float(int16_t * tabint, float * tabfloat, long tabdim, int scale_factor){
+  for (int i=0; i<tabdim; i++){
+    tabfloat[i] = ((float)tabint[i]) / (1<<scale_factor);
+  }
+}
+
+static inline void int8_t_to_float(int8_t * tabint, float * tabfloat, long tabdim, int scale_factor){
+  for (int i=0; i<tabdim; i++){
+    tabfloat[i] = ((float)tabint[i]) / (1<<scale_factor);
+  }
+}
+#endif //__NUMBER_H__
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
+/**
+  ******************************************************************************
+  * @file    conv2d.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    14 december 2022
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef _CONV2D_H_
+#define _CONV2D_H_
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#endif
+
+#define INPUT_CHANNELS      1
+#define INPUT_HEIGHT        28
+#define INPUT_WIDTH         28
+#define CONV_FILTERS        8
+#define CONV_KERNEL_SIZE_Y  3
+#define CONV_KERNEL_SIZE_X  3
+#define CONV_STRIDE_Y       2
+#define CONV_STRIDE_X       2
+
+#define ZEROPADDING_TOP    0
+#define ZEROPADDING_BOTTOM 0
+#define ZEROPADDING_LEFT   0
+#define ZEROPADDING_RIGHT  0
+
+#define CONV_OUTHEIGHT     ( ( (INPUT_HEIGHT - CONV_KERNEL_SIZE_Y + ZEROPADDING_TOP + ZEROPADDING_BOTTOM) / CONV_STRIDE_Y ) + 1 )
+#define CONV_OUTWIDTH      ( ( (INPUT_WIDTH - CONV_KERNEL_SIZE_X + ZEROPADDING_LEFT + ZEROPADDING_RIGHT) / CONV_STRIDE_X ) + 1 )
+
+
+typedef int16_t conv2d_output_type[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS];
+
+#if 0
+void conv2d(
+  const number_t input[INPUT_HEIGHT][INPUT_WIDTH][INPUT_CHANNELS],               // IN
+  const number_t kernel[CONV_FILTERS][CONV_KERNEL_SIZE_X][CONV_KERNEL_SIZE_Y][INPUT_CHANNELS], // IN
+
+  const number_t bias[CONV_FILTERS],						                // IN
+
+  number_t output[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS]);               // OUT
+#endif
+
+#undef INPUT_CHANNELS
+#undef INPUT_WIDTH
+#undef INPUT_HEIGHT
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_STRIDE_X
+#undef CONV_STRIDE_Y
+#undef ZEROPADDING_TOP
+#undef ZEROPADDING_BOTTOM
+#undef ZEROPADDING_LEFT
+#undef ZEROPADDING_RIGHT
+#undef CONV_OUTWIDTH
+#undef CONV_OUTHEIGHT
+
+#endif//_CONV2D_H_
+/**
+  ******************************************************************************
+  * @file    conv2d.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 november 2021
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef SINGLE_FILE
+#include "conv2d.h"
+#include "number.h"
+#endif
+
+#ifdef WITH_CMSIS_NN
+#include "arm_nnfunctions.h"
+#elif defined(WITH_NMSIS_NN)
+#include "riscv_nnfunctions.h"
+#endif
+
+#define INPUT_CHANNELS      1
+#define INPUT_HEIGHT        28
+#define INPUT_WIDTH         28
+#define CONV_FILTERS        8
+#define CONV_KERNEL_SIZE_Y  3
+#define CONV_KERNEL_SIZE_X  3
+#define CONV_STRIDE_Y       2
+#define CONV_STRIDE_X       2
+#define CONV_GROUPS         1
+#define CHANNELS_PER_GROUP  (INPUT_CHANNELS / CONV_GROUPS)
+#define FILTERS_PER_GROUP   (CONV_FILTERS / CONV_GROUPS)
+
+#define ZEROPADDING_TOP    0
+#define ZEROPADDING_BOTTOM 0
+#define ZEROPADDING_LEFT   0
+#define ZEROPADDING_RIGHT  0
+
+#define CONV_OUTHEIGHT     ( ( (INPUT_HEIGHT - CONV_KERNEL_SIZE_Y + ZEROPADDING_TOP + ZEROPADDING_BOTTOM) / CONV_STRIDE_Y ) + 1 )
+#define CONV_OUTWIDTH      ( ( (INPUT_WIDTH - CONV_KERNEL_SIZE_X + ZEROPADDING_LEFT + ZEROPADDING_RIGHT) / CONV_STRIDE_X ) + 1 )
+
+#define ACTIVATION_RELU
+
+// For fixed point quantization
+#define WEIGHTS_SCALE_FACTOR 9
+#define BIASES_SCALE_FACTOR 9
+#define TMP_SCALE_FACTOR 9
+#define INPUT_SCALE_FACTOR 9
+#define OUTPUT_SCALE_FACTOR 9
+#define OUTPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define NUMBER_T int16_t
+#define LONG_NUMBER_T int32_t
+
+
+static inline void conv2d(
+  const NUMBER_T input[INPUT_HEIGHT][INPUT_WIDTH][INPUT_CHANNELS],               // IN
+  const NUMBER_T kernel[CONV_FILTERS][CONV_KERNEL_SIZE_X][CONV_KERNEL_SIZE_Y][INPUT_CHANNELS / CONV_GROUPS], // IN
+
+  const NUMBER_T bias[CONV_FILTERS],						                // IN
+
+  NUMBER_T output[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS]) {               // OUT
+
+#if !defined(WITH_CMSIS_NN) && !defined(WITH_NMSIS_NN)
+  unsigned short pos_x, pos_y, z, k; 	// loop indexes for output volume
+  unsigned short x, y;
+  int input_x, input_y;
+  LONG_NUMBER_T	kernel_mac;
+  LONG_NUMBER_T tmp;
+  static LONG_NUMBER_T	output_acc[CONV_OUTHEIGHT][CONV_OUTWIDTH];
+
+  for (k = 0; k < CONV_FILTERS; k++) { 
+    for (pos_y = 0; pos_y < CONV_OUTHEIGHT; pos_y++) { 
+      for (pos_x = 0; pos_x < CONV_OUTWIDTH; pos_x++) { 
+        output_acc[pos_y][pos_x] = 0;
+
+        for (z = 0; z < INPUT_CHANNELS / CONV_GROUPS; z++) {
+          kernel_mac = 0; 
+            
+          for (y = 0; y < CONV_KERNEL_SIZE_Y; y++) {
+            input_y = pos_y * CONV_STRIDE_Y - ZEROPADDING_TOP + y;
+
+            for (x = 0; x < CONV_KERNEL_SIZE_X; x++) {
+              input_x = pos_x * CONV_STRIDE_X - ZEROPADDING_LEFT + x;
+
+              if (input_x < 0 || input_x >= INPUT_WIDTH || input_y < 0 || input_y >= INPUT_HEIGHT) // ZeroPadding2D
+                tmp = 0;
+              else
+                tmp = (LONG_NUMBER_T)input[input_y][input_x][z + (k / FILTERS_PER_GROUP) * CHANNELS_PER_GROUP] * (LONG_NUMBER_T)kernel[k][y][x][z];
+              kernel_mac = kernel_mac + tmp;
+            }
+          }
+
+          output_acc[pos_y][pos_x] = output_acc[pos_y][pos_x] + kernel_mac;
+
+        }
+      }
+    }
+
+    for (pos_y = 0; pos_y < CONV_OUTHEIGHT; pos_y++) { 
+      for (pos_x = 0; pos_x < CONV_OUTWIDTH; pos_x++) { 
+        // Scale for possible additional precision of bias
+        output_acc[pos_y][pos_x] = scale(NUMBER_T, output_acc[pos_y][pos_x],  WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+        // Scale bias to match accumulator
+        output_acc[pos_y][pos_x] += scale(NUMBER_T, (LONG_NUMBER_T)bias[k], BIASES_SCALE_FACTOR - TMP_SCALE_FACTOR - INPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+
+#ifdef ACTIVATION_LINEAR
+        output[pos_y][pos_x][k] = scale_and_clamp_to(NUMBER_T, output_acc[pos_y][pos_x], INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+#elif defined(ACTIVATION_RELU) || defined(ACTIVATION_RELU6)
+        // Activation function: ReLU
+        if (output_acc[pos_y][pos_x] < 0) {
+          output[pos_y][pos_x][k] = 0;
+        } else {
+#if defined(ACTIVATION_RELU6)
+        if (output_acc[pos_y][pos_x] > scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE)) {
+          output_acc[pos_y][pos_x] = scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE);
+        }
+#endif
+          output[pos_y][pos_x][k] = scale_and_clamp_to(NUMBER_T, output_acc[pos_y][pos_x], INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+        }
+#else
+#error "Unsupported activation function"
+#endif
+      }
+    }
+  }
+#else
+
+#if BIASES_SCALE_FACTOR > WEIGHTS_SCALE_FACTOR
+#error "CMSIS-NN does not support BIASES_SCALE_FACTOR larger than WEIGHTS_SCALE_FACTOR"
+#endif
+
+  static q15_t bufferA[INPUT_HEIGHT*INPUT_WIDTH*INPUT_CHANNELS];
+#ifdef WITH_CMSIS_NN
+  arm_convolve_HWC_q15_basic_nonsquare(
+#elif defined(WITH_NMSIS_NN)
+  riscv_convolve_HWC_q15_basic_nonsquare(
+#endif
+                                      (q15_t*)input, //Im_in
+                                      INPUT_WIDTH, //dim_im_in_x
+                                      INPUT_HEIGHT, //dim_im_in_y
+                                      INPUT_CHANNELS, //ch_im_in
+                                      (q15_t*)kernel, //wt
+                                      CONV_FILTERS, //ch_im_out
+                                      CONV_KERNEL_SIZE_X, //dim_kernel_x
+                                      CONV_KERNEL_SIZE_Y, //dim_kernel_y
+                                      ZEROPADDING_LEFT, //padding_x, left and right must be equal
+                                      ZEROPADDING_TOP, //padding_y, top and bottom must be equal
+                                      CONV_STRIDE_X, //stride_x
+                                      CONV_STRIDE_Y, //stride_y
+                                      (q15_t*)bias, //bias
+                                      INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - BIASES_SCALE_FACTOR, //bias_shift
+                                      INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, //out_shift
+                                      (q15_t*)output, //Im_out
+                                      CONV_OUTWIDTH, //dim_im_out_x
+                                      CONV_OUTHEIGHT, //dim_im_out_y
+                                      bufferA, //bufferA
+                                      NULL //bufferB, unused
+                                      );
+#ifdef ACTIVATION_RELU
+#ifdef WITH_CMSIS_NN
+  arm_relu_q15((q15_t*)output, CONV_FILTERS * CONV_OUTHEIGHT * CONV_OUTWIDTH);
+#elif defined(WITH_NMSIS_NN)
+  riscv_relu_q15((q15_t*)output, CONV_FILTERS * CONV_OUTHEIGHT * CONV_OUTWIDTH);
+#endif
+#elif !defined(ACTIVATION_LINEAR)
+#error "Unsupported activation with CMSIS-NN"
+#endif
+
+
+#endif
+}
+
+#undef INPUT_CHANNELS
+#undef INPUT_WIDTH
+#undef INPUT_HEIGHT
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_STRIDE_X
+#undef CONV_STRIDE_Y
+#undef CONV_GROUPS
+#undef CHANNELS_PER_GROUP
+#undef FILTERS_PER_GROUP
+#undef ZEROPADDING_TOP
+#undef ZEROPADDING_BOTTOM
+#undef ZEROPADDING_LEFT
+#undef ZEROPADDING_RIGHT
+#undef CONV_OUTWIDTH
+#undef CONV_OUTHEIGHT
+#undef ACTIVATION_RELU
+#undef WEIGHTS_SCALE_FACTOR
+#undef BIASES_SCALE_FACTOR
+#undef TMP_SCALE_FACTOR
+#undef INPUT_SCALE_FACTOR
+#undef OUTPUT_SCALE_FACTOR
+#undef NUMBER_T
+#undef LONG_NUMBER_T
+/**
+  ******************************************************************************
+  * @file    weights/conv2d.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#include <stdint.h>
+
+#define INPUT_CHANNELS     1
+#define CONV_FILTERS       8
+#define CONV_KERNEL_SIZE_Y 3
+#define CONV_KERNEL_SIZE_X 3
+#define CONV_GROUPS        1
+
+
+const int16_t conv2d_bias[CONV_FILTERS] = {-19, -19, -5, -4, -2, -8, -4, -16}
+;
+
+
+const int16_t conv2d_kernel[CONV_FILTERS][CONV_KERNEL_SIZE_Y][CONV_KERNEL_SIZE_X][INPUT_CHANNELS / CONV_GROUPS] = {{{{71}
+, {-164}
+, {-211}
+}
+, {{172}
+, {5}
+, {-260}
+}
+, {{209}
+, {170}
+, {8}
+}
+}
+, {{{-130}
+, {133}
+, {-134}
+}
+, {{145}
+, {144}
+, {188}
+}
+, {{-60}
+, {146}
+, {-121}
+}
+}
+, {{{-124}
+, {-295}
+, {-178}
+}
+, {{-109}
+, {15}
+, {-114}
+}
+, {{227}
+, {145}
+, {148}
+}
+}
+, {{{-90}
+, {-74}
+, {-23}
+}
+, {{171}
+, {215}
+, {77}
+}
+, {{-10}
+, {-48}
+, {40}
+}
+}
+, {{{155}
+, {180}
+, {-73}
+}
+, {{109}
+, {87}
+, {-270}
+}
+, {{-39}
+, {-228}
+, {-246}
+}
+}
+, {{{49}
+, {178}
+, {249}
+}
+, {{-165}
+, {74}
+, {-5}
+}
+, {{-428}
+, {-280}
+, {-269}
+}
+}
+, {{{147}
+, {84}
+, {60}
+}
+, {{59}
+, {69}
+, {20}
+}
+, {{-111}
+, {-22}
+, {-68}
+}
+}
+, {{{-154}
+, {4}
+, {-9}
+}
+, {{84}
+, {148}
+, {135}
+}
+, {{-185}
+, {26}
+, {85}
+}
+}
+}
+;
+
+#undef INPUT_CHANNELS
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_GROUPS
+/**
+  ******************************************************************************
+  * @file    conv2d.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    14 december 2022
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef _CONV2D_1_H_
+#define _CONV2D_1_H_
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#endif
+
+#define INPUT_CHANNELS      8
+#define INPUT_HEIGHT        13
+#define INPUT_WIDTH         13
+#define CONV_FILTERS        16
+#define CONV_KERNEL_SIZE_Y  3
+#define CONV_KERNEL_SIZE_X  3
+#define CONV_STRIDE_Y       2
+#define CONV_STRIDE_X       2
+
+#define ZEROPADDING_TOP    0
+#define ZEROPADDING_BOTTOM 0
+#define ZEROPADDING_LEFT   0
+#define ZEROPADDING_RIGHT  0
+
+#define CONV_OUTHEIGHT     ( ( (INPUT_HEIGHT - CONV_KERNEL_SIZE_Y + ZEROPADDING_TOP + ZEROPADDING_BOTTOM) / CONV_STRIDE_Y ) + 1 )
+#define CONV_OUTWIDTH      ( ( (INPUT_WIDTH - CONV_KERNEL_SIZE_X + ZEROPADDING_LEFT + ZEROPADDING_RIGHT) / CONV_STRIDE_X ) + 1 )
+
+
+typedef int16_t conv2d_1_output_type[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS];
+
+#if 0
+void conv2d_1(
+  const number_t input[INPUT_HEIGHT][INPUT_WIDTH][INPUT_CHANNELS],               // IN
+  const number_t kernel[CONV_FILTERS][CONV_KERNEL_SIZE_X][CONV_KERNEL_SIZE_Y][INPUT_CHANNELS], // IN
+
+  const number_t bias[CONV_FILTERS],						                // IN
+
+  number_t output[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS]);               // OUT
+#endif
+
+#undef INPUT_CHANNELS
+#undef INPUT_WIDTH
+#undef INPUT_HEIGHT
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_STRIDE_X
+#undef CONV_STRIDE_Y
+#undef ZEROPADDING_TOP
+#undef ZEROPADDING_BOTTOM
+#undef ZEROPADDING_LEFT
+#undef ZEROPADDING_RIGHT
+#undef CONV_OUTWIDTH
+#undef CONV_OUTHEIGHT
+
+#endif//_CONV2D_1_H_
+/**
+  ******************************************************************************
+  * @file    conv2d.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 november 2021
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef SINGLE_FILE
+#include "conv2d_1.h"
+#include "number.h"
+#endif
+
+#ifdef WITH_CMSIS_NN
+#include "arm_nnfunctions.h"
+#elif defined(WITH_NMSIS_NN)
+#include "riscv_nnfunctions.h"
+#endif
+
+#define INPUT_CHANNELS      8
+#define INPUT_HEIGHT        13
+#define INPUT_WIDTH         13
+#define CONV_FILTERS        16
+#define CONV_KERNEL_SIZE_Y  3
+#define CONV_KERNEL_SIZE_X  3
+#define CONV_STRIDE_Y       2
+#define CONV_STRIDE_X       2
+#define CONV_GROUPS         1
+#define CHANNELS_PER_GROUP  (INPUT_CHANNELS / CONV_GROUPS)
+#define FILTERS_PER_GROUP   (CONV_FILTERS / CONV_GROUPS)
+
+#define ZEROPADDING_TOP    0
+#define ZEROPADDING_BOTTOM 0
+#define ZEROPADDING_LEFT   0
+#define ZEROPADDING_RIGHT  0
+
+#define CONV_OUTHEIGHT     ( ( (INPUT_HEIGHT - CONV_KERNEL_SIZE_Y + ZEROPADDING_TOP + ZEROPADDING_BOTTOM) / CONV_STRIDE_Y ) + 1 )
+#define CONV_OUTWIDTH      ( ( (INPUT_WIDTH - CONV_KERNEL_SIZE_X + ZEROPADDING_LEFT + ZEROPADDING_RIGHT) / CONV_STRIDE_X ) + 1 )
+
+#define ACTIVATION_RELU
+
+// For fixed point quantization
+#define WEIGHTS_SCALE_FACTOR 9
+#define BIASES_SCALE_FACTOR 9
+#define TMP_SCALE_FACTOR 9
+#define INPUT_SCALE_FACTOR 9
+#define OUTPUT_SCALE_FACTOR 9
+#define OUTPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define NUMBER_T int16_t
+#define LONG_NUMBER_T int32_t
+
+
+static inline void conv2d_1(
+  const NUMBER_T input[INPUT_HEIGHT][INPUT_WIDTH][INPUT_CHANNELS],               // IN
+  const NUMBER_T kernel[CONV_FILTERS][CONV_KERNEL_SIZE_X][CONV_KERNEL_SIZE_Y][INPUT_CHANNELS / CONV_GROUPS], // IN
+
+  const NUMBER_T bias[CONV_FILTERS],						                // IN
+
+  NUMBER_T output[CONV_OUTHEIGHT][CONV_OUTWIDTH][CONV_FILTERS]) {               // OUT
+
+#if !defined(WITH_CMSIS_NN) && !defined(WITH_NMSIS_NN)
+  unsigned short pos_x, pos_y, z, k; 	// loop indexes for output volume
+  unsigned short x, y;
+  int input_x, input_y;
+  LONG_NUMBER_T	kernel_mac;
+  LONG_NUMBER_T tmp;
+  static LONG_NUMBER_T	output_acc[CONV_OUTHEIGHT][CONV_OUTWIDTH];
+
+  for (k = 0; k < CONV_FILTERS; k++) { 
+    for (pos_y = 0; pos_y < CONV_OUTHEIGHT; pos_y++) { 
+      for (pos_x = 0; pos_x < CONV_OUTWIDTH; pos_x++) { 
+        output_acc[pos_y][pos_x] = 0;
+
+        for (z = 0; z < INPUT_CHANNELS / CONV_GROUPS; z++) {
+          kernel_mac = 0; 
+            
+          for (y = 0; y < CONV_KERNEL_SIZE_Y; y++) {
+            input_y = pos_y * CONV_STRIDE_Y - ZEROPADDING_TOP + y;
+
+            for (x = 0; x < CONV_KERNEL_SIZE_X; x++) {
+              input_x = pos_x * CONV_STRIDE_X - ZEROPADDING_LEFT + x;
+
+              if (input_x < 0 || input_x >= INPUT_WIDTH || input_y < 0 || input_y >= INPUT_HEIGHT) // ZeroPadding2D
+                tmp = 0;
+              else
+                tmp = (LONG_NUMBER_T)input[input_y][input_x][z + (k / FILTERS_PER_GROUP) * CHANNELS_PER_GROUP] * (LONG_NUMBER_T)kernel[k][y][x][z];
+              kernel_mac = kernel_mac + tmp;
+            }
+          }
+
+          output_acc[pos_y][pos_x] = output_acc[pos_y][pos_x] + kernel_mac;
+
+        }
+      }
+    }
+
+    for (pos_y = 0; pos_y < CONV_OUTHEIGHT; pos_y++) { 
+      for (pos_x = 0; pos_x < CONV_OUTWIDTH; pos_x++) { 
+        // Scale for possible additional precision of bias
+        output_acc[pos_y][pos_x] = scale(NUMBER_T, output_acc[pos_y][pos_x],  WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+        // Scale bias to match accumulator
+        output_acc[pos_y][pos_x] += scale(NUMBER_T, (LONG_NUMBER_T)bias[k], BIASES_SCALE_FACTOR - TMP_SCALE_FACTOR - INPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+
+#ifdef ACTIVATION_LINEAR
+        output[pos_y][pos_x][k] = scale_and_clamp_to(NUMBER_T, output_acc[pos_y][pos_x], INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+#elif defined(ACTIVATION_RELU) || defined(ACTIVATION_RELU6)
+        // Activation function: ReLU
+        if (output_acc[pos_y][pos_x] < 0) {
+          output[pos_y][pos_x][k] = 0;
+        } else {
+#if defined(ACTIVATION_RELU6)
+        if (output_acc[pos_y][pos_x] > scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE)) {
+          output_acc[pos_y][pos_x] = scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE);
+        }
+#endif
+          output[pos_y][pos_x][k] = scale_and_clamp_to(NUMBER_T, output_acc[pos_y][pos_x], INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+        }
+#else
+#error "Unsupported activation function"
+#endif
+      }
+    }
+  }
+#else
+
+#if BIASES_SCALE_FACTOR > WEIGHTS_SCALE_FACTOR
+#error "CMSIS-NN does not support BIASES_SCALE_FACTOR larger than WEIGHTS_SCALE_FACTOR"
+#endif
+
+  static q15_t bufferA[INPUT_HEIGHT*INPUT_WIDTH*INPUT_CHANNELS];
+#ifdef WITH_CMSIS_NN
+  arm_convolve_HWC_q15_basic_nonsquare(
+#elif defined(WITH_NMSIS_NN)
+  riscv_convolve_HWC_q15_basic_nonsquare(
+#endif
+                                      (q15_t*)input, //Im_in
+                                      INPUT_WIDTH, //dim_im_in_x
+                                      INPUT_HEIGHT, //dim_im_in_y
+                                      INPUT_CHANNELS, //ch_im_in
+                                      (q15_t*)kernel, //wt
+                                      CONV_FILTERS, //ch_im_out
+                                      CONV_KERNEL_SIZE_X, //dim_kernel_x
+                                      CONV_KERNEL_SIZE_Y, //dim_kernel_y
+                                      ZEROPADDING_LEFT, //padding_x, left and right must be equal
+                                      ZEROPADDING_TOP, //padding_y, top and bottom must be equal
+                                      CONV_STRIDE_X, //stride_x
+                                      CONV_STRIDE_Y, //stride_y
+                                      (q15_t*)bias, //bias
+                                      INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - BIASES_SCALE_FACTOR, //bias_shift
+                                      INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, //out_shift
+                                      (q15_t*)output, //Im_out
+                                      CONV_OUTWIDTH, //dim_im_out_x
+                                      CONV_OUTHEIGHT, //dim_im_out_y
+                                      bufferA, //bufferA
+                                      NULL //bufferB, unused
+                                      );
+#ifdef ACTIVATION_RELU
+#ifdef WITH_CMSIS_NN
+  arm_relu_q15((q15_t*)output, CONV_FILTERS * CONV_OUTHEIGHT * CONV_OUTWIDTH);
+#elif defined(WITH_NMSIS_NN)
+  riscv_relu_q15((q15_t*)output, CONV_FILTERS * CONV_OUTHEIGHT * CONV_OUTWIDTH);
+#endif
+#elif !defined(ACTIVATION_LINEAR)
+#error "Unsupported activation with CMSIS-NN"
+#endif
+
+
+#endif
+}
+
+#undef INPUT_CHANNELS
+#undef INPUT_WIDTH
+#undef INPUT_HEIGHT
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_STRIDE_X
+#undef CONV_STRIDE_Y
+#undef CONV_GROUPS
+#undef CHANNELS_PER_GROUP
+#undef FILTERS_PER_GROUP
+#undef ZEROPADDING_TOP
+#undef ZEROPADDING_BOTTOM
+#undef ZEROPADDING_LEFT
+#undef ZEROPADDING_RIGHT
+#undef CONV_OUTWIDTH
+#undef CONV_OUTHEIGHT
+#undef ACTIVATION_RELU
+#undef WEIGHTS_SCALE_FACTOR
+#undef BIASES_SCALE_FACTOR
+#undef TMP_SCALE_FACTOR
+#undef INPUT_SCALE_FACTOR
+#undef OUTPUT_SCALE_FACTOR
+#undef NUMBER_T
+#undef LONG_NUMBER_T
+/**
+  ******************************************************************************
+  * @file    weights/conv2d.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#include <stdint.h>
+
+#define INPUT_CHANNELS     8
+#define CONV_FILTERS       16
+#define CONV_KERNEL_SIZE_Y 3
+#define CONV_KERNEL_SIZE_X 3
+#define CONV_GROUPS        1
+
+
+const int16_t conv2d_1_bias[CONV_FILTERS] = {12, -4, -93, -12, -40, 28, -5, -127, 11, 6, 1, 3, 1, 16, -9, -136}
+;
+
+
+const int16_t conv2d_1_kernel[CONV_FILTERS][CONV_KERNEL_SIZE_Y][CONV_KERNEL_SIZE_X][INPUT_CHANNELS / CONV_GROUPS] = {{{{-708, -90, -208, -22, -14, 14, -35, 55}
+, {98, 70, 7, 78, 69, -125, 86, 134}
+, {103, -13, -92, 7, 35, -224, 48, -211}
+}
+, {{-1108, -145, -215, -68, -324, -58, -239, 79}
+, {133, 119, -130, 78, 122, -47, 116, 117}
+, {149, 4, -79, -66, 100, -290, -12, -321}
+}
+, {{-359, -60, -100, -28, -515, -89, -188, 36}
+, {107, 90, -46, 50, 88, -39, 69, 61}
+, {32, -57, -66, -57, 55, -290, -58, -157}
+}
+}
+, {{{-136, -393, -6, -377, -89, -37, -239, -405}
+, {-26, -712, 149, -843, -323, -6, -310, -549}
+, {55, -662, -218, -504, -264, 150, -127, -338}
+}
+, {{-10, 36, 62, 21, -115, -130, -146, 36}
+, {79, 77, -14, 53, -189, 257, 204, 105}
+, {177, 19, 54, -9, -307, 8, -83, -32}
+}
+, {{-64, 36, 35, 33, 119, 69, 155, 55}
+, {80, 101, 125, 75, -36, 96, 108, 45}
+, {111, 21, 117, 52, -160, 199, 29, 37}
+}
+}
+, {{{120, 36, 25, 6, 59, -105, 44, -21}
+, {22, -3, 163, -29, 25, -137, -132, -43}
+, {-136, -37, -14, 30, 81, 29, -52, 9}
+}
+, {{115, 35, -83, 72, -109, 0, 45, 24}
+, {88, 53, 96, 39, -61, -220, -40, 54}
+, {37, -207, 57, -103, 51, -70, -164, -195}
+}
+, {{62, -11, -246, -13, -99, -18, 20, -20}
+, {194, 49, -138, 109, -36, 70, 87, 154}
+, {104, 31, 66, 43, -73, -159, -98, -12}
+}
+}
+, {{{-177, -83, -10, -65, -411, -97, -161, 55}
+, {-46, 59, 14, 61, 144, -141, 71, 39}
+, {-21, 32, -54, -12, 64, -8, 116, -58}
+}
+, {{-112, 72, 29, 71, 231, -315, -125, 57}
+, {-37, 65, -255, 76, 121, -106, 103, 79}
+, {37, -81, -452, -107, 43, -38, 65, -283}
+}
+, {{-42, 65, -304, 37, 56, -61, 69, 7}
+, {-58, -19, -264, -34, -14, -36, 105, -92}
+, {-29, -98, -26, -123, 8, 39, -49, -251}
+}
+}
+, {{{-11, -35, -104, -13, -195, -87, -25, 14}
+, {25, 39, -71, 9, -14, -280, 15, 5}
+, {19, 37, -138, -19, 47, -178, -6, -35}
+}
+, {{-255, -2, -400, 38, -401, -4, 51, 62}
+, {147, 118, -158, 97, -176, -95, 59, 68}
+, {54, 74, -12, 66, -154, -422, -10, 45}
+}
+, {{-558, -83, -403, -44, -485, 27, 16, 37}
+, {34, 61, -381, 39, -225, 24, 20, -19}
+, {62, 84, -1, 58, -129, 28, 9, 129}
+}
+}
+, {{{125, 24, -5, 88, 47, -30, 90, -237}
+, {-92, -371, -118, -137, 33, -337, -158, -27}
+, {-70, 56, 113, 125, -9, -438, -66, 131}
+}
+, {{70, -51, -65, -69, 102, -336, 96, -487}
+, {-466, -173, -85, 16, -540, -315, -291, 64}
+, {47, 99, -29, 73, 98, -75, 162, 118}
+}
+, {{-29, -258, -92, -179, -23, -391, -22, -195}
+, {-423, -57, -139, -29, -431, -125, -195, 56}
+, {134, 90, -9, 84, -36, -17, 109, 125}
+}
+}
+, {{{24, -53, 71, -58, 1, -65, -26, -72}
+, {29, 7, 115, -16, -130, -258, -113, -20}
+, {-66, 29, 34, 32, -135, -198, -75, 20}
+}
+, {{-31, 61, 232, 92, 86, 83, 91, 64}
+, {-160, 95, 246, 112, 125, 148, 95, 131}
+, {-111, 19, -289, 42, 54, 122, 63, -13}
+}
+, {{-119, -139, -458, -123, 3, 70, 26, -80}
+, {-290, -93, -168, -129, 49, 107, 49, -115}
+, {-143, -92, -5, -96, 115, -43, -70, -57}
+}
+}
+, {{{-54, -10, 99, 21, -56, 68, 39, -20}
+, {-159, 101, 36, 76, -14, -27, 77, 70}
+, {-121, 50, -112, 56, 58, -96, 99, 74}
+}
+, {{-232, 54, -2, 64, 63, 26, 81, 1}
+, {-43, -33, -588, -12, 28, -72, 102, 60}
+, {39, 12, -225, 1, -6, -105, 91, 0}
+}
+, {{45, -101, -438, -97, 126, -21, 1, -13}
+, {265, -16, -264, 8, -85, -82, -66, 62}
+, {162, 92, -2, 87, -54, -24, 70, 125}
+}
+}
+, {{{28, 36, -4, 30, 25, -44, 28, 45}
+, {82, -92, 10, -78, -78, 28, -42, -268}
+, {-48, -190, -59, -148, -53, 32, -81, -184}
+}
+, {{71, 117, 14, 76, 45, 28, 83, 116}
+, {81, -37, -63, 15, 15, -403, 6, -228}
+, {-49, -327, -202, -136, -85, -166, -285, 6}
+}
+, {{19, 131, 14, 46, 149, 20, 86, 91}
+, {-1, -27, -86, -57, 175, -258, 90, -397}
+, {-116, -256, -59, -134, -115, -157, -319, 100}
+}
+}
+, {{{-147, -366, -159, -181, -205, -455, -431, -88}
+, {-203, -43, 126, 39, -484, -139, -330, 41}
+, {-120, 31, 26, 22, 30, -255, 13, 57}
+}
+, {{-365, -278, -31, -173, -361, -765, -622, 53}
+, {-156, 63, 89, 85, 300, -705, -77, 60}
+, {-57, 76, -116, 87, 87, -175, 68, 62}
+}
+, {{-71, 14, 57, 0, -145, -385, -327, 80}
+, {73, 53, -186, 74, 218, -144, 89, 57}
+, {62, 39, -238, -26, 137, -152, 44, 11}
+}
+}
+, {{{-49, 59, -124, 55, -37, 31, 37, 60}
+, {36, 22, -98, 31, -75, 135, 67, 65}
+, {88, 28, -4, -1, -88, 56, 25, -21}
+}
+, {{-12, -122, -550, -109, 11, -41, -16, -26}
+, {340, 42, -140, 39, -107, 120, 63, 31}
+, {174, 42, 40, 62, -96, 155, 94, 75}
+}
+, {{-107, -358, -320, -390, -160, -17, -119, -336}
+, {-464, -140, -149, -115, -224, 138, 15, -47}
+, {-60, -3, -35, 4, -113, 153, 62, -4}
+}
+}
+, {{{-21, 13, -213, 23, 15, 54, 17, 28}
+, {24, 146, 70, 98, -1, 111, 51, 117}
+, {-51, 107, 29, 128, 23, 145, 117, 83}
+}
+, {{23, -183, 85, -266, -18, 54, -73, -348}
+, {-314, -243, -42, -289, -8, 105, 53, -246}
+, {-288, -215, -251, -177, 69, 68, 105, -158}
+}
+, {{21, 80, 104, 107, -11, -385, -11, 94}
+, {62, -35, 24, -16, -210, -612, -507, 84}
+, {-5, -75, -26, 8, -288, -612, -368, 7}
+}
+}
+, {{{3, 110, 199, 103, 87, 36, 115, 83}
+, {-121, 17, -480, 27, 64, 37, 80, -120}
+, {-156, -236, 44, -220, -21, -104, -71, -129}
+}
+, {{-352, -670, -194, -644, -24, 82, 14, -502}
+, {-205, -281, 226, -225, 183, -253, -391, 4}
+, {-147, 91, 222, 112, -291, -779, -323, 55}
+}
+, {{-359, -169, -115, -105, -279, -246, -585, -5}
+, {-138, 69, 115, 93, 64, 20, 46, 86}
+, {-60, 54, 206, 72, 58, 128, 87, 75}
+}
+}
+, {{{-180, -68, -726, -98, 29, 45, 94, -7}
+, {25, 101, -27, 107, 137, 6, 90, 62}
+, {-219, 59, -235, 54, 269, 76, 126, 41}
+}
+, {{-104, -407, 117, -616, -474, 120, -466, -414}
+, {-31, -687, 222, -712, -118, 207, -16, -482}
+, {-57, -436, 19, -399, 105, -79, -86, -246}
+}
+, {{119, 83, 56, 65, 35, -246, 16, 99}
+, {97, 57, -16, 49, -158, -257, -80, 107}
+, {114, 45, 85, 34, -368, -274, -147, 30}
+}
+}
+, {{{96, 26, 89, 59, -14, 21, 80, 37}
+, {28, 34, -13, 63, 80, 36, 51, 46}
+, {-71, 65, 50, 73, 70, -13, 5, 106}
+}
+, {{-60, 7, -332, -14, 4, 99, 47, 108}
+, {1, 83, 117, 118, 61, -27, 32, 157}
+, {-146, 140, -98, 77, 241, 14, 99, 65}
+}
+, {{-20, -378, 281, -523, -156, 53, -221, -610}
+, {-237, -829, -7, -973, -74, 78, -65, -693}
+, {-325, -844, 28, -713, 108, -87, -146, -423}
+}
+}
+, {{{94, 39, -19, 63, -16, -44, 88, 40}
+, {92, -85, 102, -33, -55, 64, -86, -43}
+, {24, -74, 8, -135, -13, 156, -114, -97}
+}
+, {{32, 16, 1, 31, -70, 101, 99, 59}
+, {64, 61, 239, 65, -206, 294, 55, 39}
+, {127, 51, 164, 116, -40, -32, 0, 51}
+}
+, {{-162, -11, -112, -78, -33, 52, -1, -76}
+, {-127, -2, -138, 39, 63, 64, 82, -9}
+, {-35, 10, 32, 34, -29, 26, 62, 62}
+}
+}
+}
+;
+
+#undef INPUT_CHANNELS
+#undef CONV_FILTERS
+#undef CONV_KERNEL_SIZE_X
+#undef CONV_KERNEL_SIZE_Y
+#undef CONV_GROUPS
+/**
+  ******************************************************************************
+  * @file    flatten.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 january 2023
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef _FLATTEN_H_
+#define _FLATTEN_H_
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#endif
+
+#define OUTPUT_DIM 576
+
+typedef int16_t flatten_output_type[OUTPUT_DIM];
+
+#if 0
+void flatten(
+  const number_t input[6][6][16], 			      // IN
+	number_t output[OUTPUT_DIM]); 			                // OUT
+#endif
+
+#undef OUTPUT_DIM
+
+#endif//_FLATTEN_H_
+/**
+  ******************************************************************************
+  * @file    flatten.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 2.0.0
+  * @date    26 november 2021
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef SINGLE_FILE
+#include "flatten.h"
+#include "number.h"
+#endif
+
+#define OUTPUT_DIM 576
+
+#define NUMBER_T int16_t
+#define LONG_NUMBER_T int32_t
+
+static inline void flatten(
+  const NUMBER_T input[6][6][16], 			      // IN
+	NUMBER_T output[OUTPUT_DIM]) {			                // OUT
+
+  NUMBER_T *input_flat = (NUMBER_T *)input;
+
+  // Copy data from input to output only if input and output don't point to the same memory address already
+  if (input_flat != output) {
+    for (size_t i = 0; i < OUTPUT_DIM; i++) {
+      output[i] = input_flat[i];
+    }
+  }
+}
+
+#undef OUTPUT_DIM
+#undef NUMBER_T
+#undef LONG_NUMBER_T
+/**
+  ******************************************************************************
+  * @file    fc.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 january 2023
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef _DENSE_H_
+#define _DENSE_H_
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#include <stdint.h>
+#endif
+
+#define INPUT_SAMPLES 576
+#define FC_UNITS 100
+
+typedef int16_t dense_output_type[FC_UNITS];
+
+#if 0
+void dense(
+  const number_t input[INPUT_SAMPLES], 			      // IN
+	const number_t kernel[FC_UNITS][INPUT_SAMPLES],  // IN
+
+	const number_t bias[FC_UNITS],			              // IN
+
+	number_t output[FC_UNITS]); 			                // OUT
+#endif
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+
+#endif//_DENSE_H_
+/**
+  ******************************************************************************
+  * @file    fc.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef SINGLE_FILE
+#include "dense.h"
+#include "number.h"
+#endif
+
+#ifdef WITH_CMSIS_NN
+#include "arm_nnfunctions.h"
+#elif defined(WITH_NMSIS_NN)
+#include "riscv_nnfunctions.h"
+#endif
+
+#define INPUT_SAMPLES 576
+#define FC_UNITS 100
+#define ACTIVATION_RELU
+
+// For fixed point quantization
+#define WEIGHTS_SCALE_FACTOR 9
+#define BIASES_SCALE_FACTOR 9
+#define TMP_SCALE_FACTOR 9
+#define INPUT_SCALE_FACTOR 9
+#define OUTPUT_SCALE_FACTOR 9
+#define OUTPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define NUMBER_T int16_t
+#define LONG_NUMBER_T int32_t
+
+
+static inline void dense(
+  const NUMBER_T input[INPUT_SAMPLES], 			      // IN
+	const NUMBER_T kernel[FC_UNITS][INPUT_SAMPLES],  // IN
+
+	const NUMBER_T bias[FC_UNITS],			              // IN
+
+	NUMBER_T output[FC_UNITS]) {			                // OUT
+
+#if !defined(WITH_CMSIS_NN) && !defined(WITH_NMSIS_NN)
+  unsigned short k, z; 
+  LONG_NUMBER_T output_acc;
+
+  for (k = 0; k < FC_UNITS; k++) { 
+    output_acc = 0;
+    for (z = 0; z < INPUT_SAMPLES; z++) 
+      output_acc = output_acc + ((LONG_NUMBER_T)kernel[k][z] * (LONG_NUMBER_T)input[z]);
+
+    output_acc = scale(NUMBER_T, output_acc, WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+    output_acc += scale(NUMBER_T, (LONG_NUMBER_T)bias[k], BIASES_SCALE_FACTOR - TMP_SCALE_FACTOR - INPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+
+    // Activation function
+#ifdef ACTIVATION_LINEAR
+    // Linear (MEANS NONE)
+    output[k] = scale_and_clamp_to(NUMBER_T, output_acc, INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+#elif defined(ACTIVATION_RELU) || defined(ACTIVATION_RELU6)
+    // ReLU
+    if (output_acc < 0) {
+      output[k] = 0;
+    } else {
+#if defined(ACTIVATION_RELU6)
+      if (output_acc > scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE)) {
+        output_acc = scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE);
+      }
+#endif
+      output[k] = scale_and_clamp_to(NUMBER_T, output_acc, INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+    }
+#else
+#error "Unsupported activation function"
+#endif
+  }
+#else
+
+#if BIASES_SCALE_FACTOR > WEIGHTS_SCALE_FACTOR
+#error "CMSIS-NN does not support BIASES_SCALE_FACTOR larger than WEIGHTS_SCALE_FACTOR"
+#endif
+
+  static q15_t bufferA[INPUT_SAMPLES];
+#ifdef WITH_CMSIS_NN
+  arm_fully_connected_q15(
+#elif defined(WITH_NMSIS_NN)
+  riscv_fully_connected_q15(
+#endif
+                             (q15_t*)input,
+                             (q15_t*)kernel,
+                             INPUT_SAMPLES,
+                             FC_UNITS,
+                             INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - BIASES_SCALE_FACTOR,
+                             INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR,
+                             (q15_t*)bias,
+                             (q15_t*)output,
+                             (q15_t*)bufferA);
+#ifdef ACTIVATION_RELU
+#ifdef WITH_CMSIS_NN
+  arm_relu_q15((q15_t*)output, FC_UNITS);
+#elif defined(WITH_NMSIS_NN)
+  riscv_relu_q15((q15_t*)output, FC_UNITS);
+#endif
+#elif !defined(ACTIVATION_LINEAR)
+#error "Unsupported activation with CMSIS-NN"
+#endif
+
+
+#endif
+}
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+#undef ACTIVATION_RELU
+#undef WEIGHTS_SCALE_FACTOR
+#undef BIASES_SCALE_FACTOR
+#undef INPUT_SCALE_FACTOR
+#undef OUTPUT_SCALE_FACTOR
+#undef NUMBER_T
+#undef LONG_NUMBER_T
+/**
+  ******************************************************************************
+  * @file    weights/fc.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#include <stdint.h>
+
+#define INPUT_SAMPLES 576
+#define FC_UNITS 100
+
+
+const int16_t dense_bias[FC_UNITS] = {-24, -43, 69, -72, -93, -98, -64, -104, 47, -77, -48, -82, -32, -45, -53, 9, -119, -23, -49, -137, -82, -29, 30, 72, -26, -67, -57, -91, 46, -111, -66, -14, -78, 29, -12, -74, -99, 76, -94, -11, 36, -23, -67, -125, -94, -113, -81, -62, 3, -94, 12, 44, 36, -113, -121, -103, -29, -52, -23, 9, -41, -45, -128, -87, -61, 0, -137, 28, -24, -133, -35, -47, -5, -82, -69, -65, -57, -71, -69, -45, -99, -94, -4, 52, 4, -99, -36, 147, -71, -5, -36, 57, -8, -79, 55, -70, -11, -17, -144, -6}
+;
+
+const int16_t dense_kernel[FC_UNITS][INPUT_SAMPLES] = {{65, -68, -78, 78, -107, -55, -93, -18, 144, 151, -23, 118, -23, -31, 141, -8, -100, -102, 18, -32, 17, 89, -132, 90, 13, -134, 8, 0, -3, -66, 246, 3, -224, -88, -72, 12, -141, -51, -9, -7, -288, 194, -254, -101, -8, 28, -171, 55, 21, 60, 37, 220, -222, -114, 129, 25, -123, 17, -145, 26, 9, 19, 194, -7, -80, 31, 183, 128, -15, -295, 121, 104, 151, -57, 79, 72, -190, 66, 177, 121, 115, -43, -135, 61, 102, 58, 173, 7, -35, -1, 132, -137, 3, -131, 8, 20, 63, -119, -223, -52, -88, -39, -238, -146, 156, -101, -273, -37, 1, -28, -323, -155, -215, -59, -334, 74, -113, 39, 25, -7, -358, 88, -475, -381, 105, 14, -292, -138, -135, 36, -201, 52, -150, -129, 100, 91, -471, 118, -296, -106, 152, -204, 59, 21, -313, 44, 115, -27, 50, -395, 128, 79, -339, -216, 123, 159, -226, -198, 164, 101, -108, 11, -32, -174, 13, -296, 243, 85, -8, -283, 168, 106, -270, 9, 384, 130, -263, -24, -69, -60, 372, -18, -98, 74, -100, -98, 212, 95, 151, 150, 174, -11, 79, -118, -11, -169, -28, 20, -167, -51, 19, 3, -79, -125, -17, -25, -132, -142, 69, -400, 203, -27, 168, 126, -90, 78, 70, 16, 112, -142, -133, -489, -231, 5, 36, -21, 0, -67, 84, -391, -123, -68, -134, -39, 212, -57, -277, 145, 45, 132, -48, 8, 38, -37, -43, -83, 94, -97, -17, 18, -107, 206, -24, 168, -56, 71, -28, 0, 29, -47, 128, 5, -77, -121, -37, -257, 173, 100, 58, 171, 136, -49, 108, -93, -31, -98, 19, -64, -15, 63, -46, 137, -48, 4, 40, -49, -106, 110, 215, -386, 83, 32, 4, 53, -305, 148, 52, -34, -25, -63, -249, -54, -125, -32, 23, -245, 55, -328, 108, 56, -143, -12, 179, 39, 62, 32, -553, -94, -36, 122, 62, -52, 169, 97, 74, -461, -15, 65, -283, -334, 66, 95, -180, -2, 26, 15, 35, -47, -11, 16, -96, -199, 12, -53, 65, -151, -9, 28, 111, 73, -34, -53, -61, 101, -90, -59, -32, 174, -115, -13, -19, -142, 23, -35, -151, 171, -100, -133, 83, -159, -47, -223, 69, -106, -293, 117, 41, -132, 198, 118, -155, -157, -55, 22, 66, -90, 50, -191, -9, -114, -53, -12, 29, 4, -156, 13, 88, 29, 55, -146, -136, -123, -22, -159, 38, -105, -194, 52, 223, 21, 52, -15, -244, -59, -20, -12, 206, -108, 122, 159, 161, -41, -43, 151, -72, 49, 122, -60, -82, -5, -9, 7, -51, 125, 180, -37, -17, -6, -239, 12, -2, -44, -24, 18, -59, 114, 2, -24, 22, 173, -41, 15, -72, 15, 44, -174, 29, -30, -118, -184, -7, 57, -209, -15, 356, 30, 140, 79, 104, 85, 8, 278, 41, 104, -145, -4, -226, -53, -131, -18, 159, 3, -23, 13, -226, -7, 29, -12, -33, -64, -4, -144, -37, -173, 29, -129, 2, -171, -12, -41, 175, 40, -115, 6, 268, -17, -66, -58, -120, -139, -59, -84, 15, 24, 63, -33, 45, 12, -41, 5, 9, -14, 58, 40, -107, -12, 14, 85, 69, 34, 98, -40, -15, -93, 54, 69, -15, 17, 72, 67, -176, 53, 78, 71, 2, 22, 117, -4, 62, -12, 140, -27, 35, 132, -63, 26, 104, 46, 29, -44, 84, -122, 338, 251, 270, 16, 14, 151, 90, 173, -76, 128, -75, 166, -8, 188}
+, {-139, 296, 124, -19, 91, -27, -31, 135, 34, -33, 65, -126, 164, 158, -40, 158, 200, -27, 17, 151, 96, 14, 245, 156, 212, 262, 239, 70, 143, -68, 49, 171, 337, -117, -25, 453, 146, 14, 388, 105, 268, 10, 2, -181, -10, -76, 290, 72, 49, -5, -28, -15, 29, 133, -13, -148, 84, 114, 88, -98, -76, -127, 1, 58, 251, 9, 45, -37, -149, 99, 71, -37, 46, 91, 137, -194, 2, -102, -101, 114, 146, 6, 102, 128, -35, -43, -1, 206, 72, 82, 135, -129, 153, -160, -252, 260, 222, -309, 230, -28, -18, 24, 39, 139, 81, 226, 223, -132, -193, -165, -41, 180, 307, -91, 115, 261, 47, -50, 0, 240, 371, -93, 38, -59, -113, -111, -4, -126, 279, -140, -57, -24, -84, 14, -173, -14, 474, -76, 38, 21, -7, 4, 15, -218, 126, -107, -105, -44, -32, 94, -197, -63, 145, -28, 109, -266, -22, -124, -3, -49, 153, -53, -41, 21, -49, 130, -41, 63, 31, 58, 74, -136, 82, 8, 30, -204, 214, -79, -147, 98, -145, 43, -51, 33, -7, 129, 194, 94, 298, 25, 19, -207, 192, 229, -3, 134, -71, -27, -212, -56, 115, -101, -116, 15, 43, 128, -2, -65, -23, 250, 61, -45, -104, -45, -15, -168, 169, -7, -284, -94, 117, 149, -40, -69, -11, 71, 146, -23, -101, 4, -67, -69, -68, 106, -352, -143, 112, 174, -118, -132, -22, 22, -25, -15, -230, 51, -176, -41, 7, -108, -105, -144, 46, 97, -46, -272, 124, 95, 26, -3, -11, 148, -224, 15, 3, 121, 96, -84, -31, -23, -80, -100, -44, 70, 324, 17, 191, -5, -66, -136, -34, 97, -112, -56, -187, 87, -201, 66, -48, 70, -24, -138, -49, 19, 162, 10, -68, 109, -87, -215, 53, -262, -36, -119, 18, -158, 65, 323, -27, -1, 241, 72, -84, 98, 3, -60, 103, -181, 82, 12, 134, 36, 14, 76, 72, -105, 32, -2, 93, 191, -23, -36, -98, -138, 63, 64, -332, 17, 143, -231, 105, 71, 61, -8, -317, -174, -105, -180, 91, -105, -183, 114, -132, -14, 122, -15, -14, -49, 92, 98, 84, 121, 62, -52, -170, -41, -83, 150, 360, 33, -46, 134, -102, -204, 177, -12, 45, 353, 154, 51, -37, -15, 54, 114, 143, -100, 105, 143, 90, -56, 138, 163, 75, 55, 31, 37, -162, 40, 141, 101, 205, -231, -35, 179, -62, 34, -75, 156, -107, 21, 40, 101, -262, 8, 101, -143, -72, -111, -20, -75, -74, -57, 15, -16, -93, 34, 19, 146, -177, 41, 95, 9, 14, -132, -145, 65, -42, -33, 28, -2, -244, -54, 123, 32, 75, -40, 149, 21, 25, -78, -12, -1, 111, -53, 113, 215, 1, -119, 237, 274, 99, 28, 229, 5, -197, 301, -114, 114, -48, 8, 221, 185, 86, -53, 174, 146, 104, 32, 263, 30, 5, -209, -9, 21, -23, 31, 61, 105, 41, 44, 44, -16, -115, 17, 19, 1, -30, -431, -146, 8, -228, -172, -55, -27, 71, -146, -44, 22, -169, -98, -10, -81, -35, -299, -172, -7, -200, -28, -92, -27, -346, -237, -82, 52, -154, 56, 1, -42, 10, 216, -62, -85, -2, 135, -228, -131, -190, -57, -65, -11, 203, 13, -20, -198, 74, 95, -188, -47, -163, 81, -68, -228, -57, -85, -33, -43, -25, 157, -50, -25, -190, 18, -71, -243, -143, -27, -232, -96, -138, -144, -208, 53, 91, -108, -251, 16}
+, {-71, 13, -140, -32, -49, -62, -1, -56, -113, 10, -192, 112, -65, -63, 220, -36, 38, -92, -68, -172, -21, 37, -48, 50, 33, 23, -322, 18, -98, 22, 251, -242, 91, -32, -7, -166, -23, 64, -116, 72, 60, 89, 46, 0, 32, 21, 216, -228, -64, -29, -93, -11, -75, 48, 14, 88, -9, -15, 129, 11, -65, -2, 97, -38, 217, -24, 37, -50, 243, 134, -112, 116, 93, -21, 77, -55, 80, -58, 113, 87, 225, 33, 65, 47, 104, -70, 43, 155, 62, 70, -51, -59, 39, -33, 9, 130, 152, 98, 71, -32, 38, -79, 83, -3, -151, -92, -114, 57, -45, 38, 58, -20, 43, 39, 113, -17, -78, 5, 42, -176, 200, -27, 36, -16, 28, 94, -18, 8, 74, -16, 70, 38, -95, -30, -11, 46, 51, -2, 10, 40, -7, -36, -7, 18, -71, -14, 17, -5, -36, 5, -89, -51, 126, 50, -14, 20, 11, -27, 7, -21, 182, 39, 52, 40, 0, 176, -43, -141, 68, 93, 42, -59, 34, 40, 68, -71, 254, 122, 42, 105, 246, 106, 41, 48, 19, 260, -19, 174, -19, 149, 50, 27, 58, 205, 254, 80, 187, 77, 36, 73, -156, 241, 30, -69, 125, 85, 14, 347, 25, -16, 209, 43, 230, -13, -87, 62, 100, -26, 91, 51, -70, -89, -77, 155, 14, -16, 132, -13, 29, 37, -25, -68, -63, 52, 221, -83, -195, -31, -43, 56, 29, 39, 119, 74, 109, -11, 64, 11, 38, -75, 16, 35, -111, -27, 1, 11, -64, -28, -60, 136, -190, 72, 25, -54, 36, 132, -207, 21, 72, 26, -150, -5, 215, -48, 74, 61, 88, 34, 40, 22, 128, -94, -30, -24, 54, -25, -26, 70, 232, -92, -75, 256, 118, -7, 98, 251, -65, 148, 218, -74, 14, -5, 84, -78, -39, 98, -130, 61, 53, -178, 26, -98, -66, -118, 198, 164, -18, 52, 135, 148, -139, -45, -135, -145, -2, -216, 10, -56, -122, -54, 10, -45, -184, -54, -89, 144, -30, -160, -108, 81, 75, -8, 53, 115, -86, -124, -90, -155, -41, -292, -182, 75, -30, -50, -112, 24, -86, -50, 231, 124, -95, -43, -146, 52, 279, -30, 58, 47, 118, 56, 190, 198, 6, 122, 63, 46, 93, 205, 5, -17, 233, -164, 99, -29, -77, 53, -174, 196, -69, -61, -131, -42, -131, -73, -110, 110, 18, 324, -76, -278, -60, -149, -121, 130, -107, -17, -110, -94, -105, 72, -145, 20, 182, -89, -288, -38, 25, -537, 37, 162, -125, 204, -334, 94, 150, 158, -96, -210, 55, -294, -294, -568, 58, -277, -63, -60, 88, 152, -400, 62, 158, 6, 17, 43, -11, -224, -82, -182, 54, -366, -70, -93, -40, 25, -126, -34, 7, 8, -111, 9, 104, 55, -43, -46, -75, -210, -72, -21, 39, 0, -127, -128, -7, -182, 21, -9, 52, 12, -58, -125, -133, -76, -23, -126, -94, 67, -65, -19, -141, 71, -64, -34, -110, 82, 67, -102, 252, -497, -34, 119, -107, 42, 9, -12, 243, 113, -48, -92, -97, -217, 10, -185, 140, -402, 149, 4, 124, 315, -70, -224, 718, -71, 13, -125, -314, -173, -38, -29, 173, -244, 152, 16, 158, 318, -38, -96, 337, -112, -27, -135, -221, -266, -23, -24, 44, -427, 171, -35, 201, 28, -112, -40, -48, 15, 123, -141, -256, -204, -51, -88, 82, -242, 11, -69, -19, -46, 101, -56, 0, -69, -172, -128, -268, 20, -99, 87}
+, {-28, 88, 206, 9, -72, -55, 77, -19, -52, -66, -63, 10, 3, 11, 127, 59, -155, -31, -43, 23, 37, 2, 2, 77, -54, -103, -161, -27, -89, 35, 6, -208, 24, -24, 34, -249, -145, -120, -6, 52, -73, -102, -119, 132, -24, 43, -92, -177, -14, -96, -106, -193, -113, -33, -195, 241, -33, 52, 126, 13, 21, 19, 187, -130, 137, -10, -34, 46, 143, -30, -75, 90, 57, 28, 122, -68, -38, -16, 27, -164, 231, 59, -55, 7, 229, 43, -40, 139, 21, 42, -39, -53, 394, -1, -44, 22, -75, 128, 62, 212, -7, -18, 47, -162, -179, 134, -58, -139, -14, 92, 28, 10, -49, -32, -210, -22, -1, 21, 75, -52, -122, 51, -227, -8, 169, 174, -19, -11, -96, 69, -169, 144, -148, -41, 89, -103, -53, 44, -9, 4, 168, 62, 39, 44, -49, 116, 1, -89, 77, -1, 64, 106, 9, 43, 91, -89, -63, -65, -72, 27, 76, 39, 22, -27, -6, 14, 57, -77, 62, 43, -162, 55, -51, 21, -63, -53, 66, 202, -98, 60, 7, 96, 162, 157, 54, -46, -77, 71, -18, -4, 47, -124, 125, -193, -26, 103, 63, 87, -43, 194, -12, -94, 131, -56, -9, -34, 32, -83, 110, -284, 305, 21, 88, 80, -97, 115, 201, 44, 83, -133, 87, -289, 6, 69, 51, -73, 244, -179, -10, 15, -190, 103, -42, 44, -31, -21, -17, 41, -281, 72, 39, -121, 39, 31, -236, -26, 53, -229, -164, -17, -316, 18, 5, 112, -30, -61, -85, -7, -47, 60, -133, 60, 101, -110, 11, 143, -235, -61, 209, -187, 161, -5, 113, -32, 116, 44, -93, 58, 155, -3, 76, -23, -92, 39, 48, -38, -43, 67, -282, -182, -142, -359, -288, -253, 28, -144, 117, -127, -83, -62, -300, -203, 14, -68, -206, -419, -275, -252, 87, -190, 126, -94, -365, -283, 171, 121, -331, -32, 146, 161, -64, 86, 48, -7, 140, -120, 70, 74, -600, -237, 264, 121, -616, -11, 157, 243, -128, -1, 61, 37, 24, -166, 30, 142, 39, -388, 159, -2, -122, -129, 68, 87, -102, -53, -49, -38, -65, -60, 23, 96, 13, -327, 95, 96, 15, 138, -119, 1, 12, -117, 84, -85, 162, -154, -430, -10, 41, -48, 175, 125, 102, 12, -27, -31, -85, 285, 47, -49, -6, -34, -292, -139, 75, 11, -155, -143, 134, 72, -368, 16, -43, 285, 42, 86, -250, -21, -23, -99, 198, -157, -201, -11, 131, 158, -174, -143, 29, 34, -69, 44, -71, -15, -92, -13, 12, 18, -135, 86, 233, 191, -51, -53, 5, 12, -4, -60, -131, -123, -161, -153, -31, -106, 9, 139, 61, -11, 86, 2, 84, 86, -22, 7, 129, 108, -6, -72, 16, 16, 10, -201, 158, -3, -81, 49, 32, -189, 68, 80, -144, 68, -57, -57, 24, -27, -100, -278, -236, -237, -201, -97, -134, 41, -80, -43, 51, -8, 34, -66, -41, 146, 54, 15, -33, 21, -42, 110, -44, 91, 95, 63, -2, 129, 33, -4, 32, 19, -44, -51, -3, -7, -1, -32, 4, 262, 5, 66, -48, 6, 30, -35, -22, -3, -23, -11, 105, 41, 79, 37, -37, 72, -88, 26, -104, 2, 30, -63, -78, 42, -22, -122, 128, -106, -42, -18, -38, -66, 2, 36, 99, 130, 7, 39, -20, 270, -7, -67, 136, -66, -59, -95, 21, 123, 205, 225, 7, 27, 122, 52, 77, 39, -159, -54, -10, -140, 73, 58}
+, {-31, 77, 34, 77, -90, -191, 127, -112, 50, -8, 316, -150, -41, -76, -161, 113, -30, -5, 62, 6, 34, -104, -42, -118, -176, 85, 242, -367, 24, -93, -26, 170, -92, -32, 87, -110, 50, -72, -36, -220, -59, -42, 64, -18, -41, -31, 192, 123, 99, 17, 17, -41, 272, -88, -24, 242, 50, -60, 255, 92, 21, 13, -10, 192, -160, 41, 43, -202, 20, 137, -72, 230, 69, -11, 244, 92, 79, -5, 50, -21, 111, 68, 50, -240, -103, -235, -302, -72, 25, 30, -112, 113, 46, 60, -257, -106, -55, -61, -169, 315, -200, -39, 194, -142, 119, 39, -175, 97, 2, -24, 65, 24, -55, -37, -230, 44, 21, -33, 31, 15, -120, -60, 33, 209, -8, 58, 66, -60, -52, 48, -180, 48, -113, -88, 70, -109, 52, 2, 91, 132, 106, 187, 10, -16, -12, -28, 26, -90, 180, 189, -4, -2, 32, 6, -6, -92, -146, 6, -51, 57, 222, -94, 132, -84, 106, 67, -202, 147, 203, 55, 102, -228, -250, -188, -402, -62, 169, -126, 10, 83, 142, 57, -334, 76, 44, -215, -323, -115, -348, -125, -442, -24, 31, 125, -57, 156, -151, -51, 297, -234, 249, -35, 41, 56, 154, 26, 145, 5, -123, 332, -139, 81, -327, -79, 193, -178, -141, -11, -166, 107, 204, 181, 3, -43, 58, 155, -150, 106, -138, -16, 52, -50, 97, 0, -18, 68, 163, -11, -56, -41, -18, -134, -150, -20, -181, 145, -97, -39, -41, -98, 82, -177, -17, -72, 44, -145, 199, -320, 80, 29, 154, 329, -143, 165, 180, 151, 111, -230, -155, -275, -15, -138, 175, -282, -11, 48, 98, 5, -5, -2, -56, 215, -129, -288, -208, -334, -259, -116, 193, 53, 165, -89, 30, -32, 27, 38, -26, 204, -29, 76, -25, -45, -180, 173, -32, -26, 2, -14, 192, -80, 38, 108, -106, 12, -119, -155, -39, -75, -54, -22, 87, -58, 46, -50, 20, 29, -50, -74, 269, 105, 96, 150, -99, 5, 101, 56, -35, -44, -239, -159, 71, 43, -91, -116, 23, -250, -18, 50, -110, 171, -89, -34, -90, -185, -36, 82, -44, 196, 108, -27, 31, 146, -55, -233, 73, -247, -151, -83, -37, -22, -27, -20, 126, 89, 71, 87, 41, 245, 2, 6, -128, -127, 21, 150, 260, -64, 15, 281, -18, -56, -29, 27, 162, -45, 17, 49, -38, 28, 61, 3, -40, 128, -13, 22, -8, 108, 116, 19, -193, 111, -15, 25, 12, 82, 115, 58, 66, 42, 54, -131, 135, -191, -55, -114, 24, -22, 79, 93, 26, 33, -8, 119, -49, 42, 84, 45, -4, 147, 66, 7, -251, 31, 285, -41, 118, -29, 5, 100, 9, 111, -47, 2, 18, -44, 13, 24, -45, 50, 88, 13, 4, 133, 73, 7, 42, 212, 105, 58, 170, -15, 6, -14, -3, 117, -8, 196, 103, 82, 7, 100, 164, -264, 16, 90, 38, 21, 26, 109, 42, 99, -116, -17, -236, 8, -31, 65, 231, -98, -131, 43, -77, -29, 94, -56, -10, -49, 82, 9, -11, 11, 87, -1, -290, 74, 39, -31, -51, -617, 55, 64, -432, -522, 27, -6, 20, 15, 58, -91, -569, 91, -293, -5, -161, -111, -67, 141, -465, -245, -61, -49, -4, -90, -37, 15, 139, 460, 31, 68, -184, -193, -37, -38, -22, -79, -36, 98, 70, 143, 94, 15, 30, 156, -47, 121, 72, -72, 147, 266, -94, 91, 48, 76, -8, 75, 126, 73}
+, {-54, 193, 182, 33, -46, 85, -82, 68, 125, 289, 268, -60, 104, -33, -203, 198, 129, 51, 74, 149, -26, -47, 86, -78, 86, 145, 323, -43, -47, -91, -5, 295, 405, 81, 63, 33, -16, 7, 122, -42, 168, 63, 163, 45, 55, 19, 401, 37, 111, 36, 66, 68, 186, -43, -102, -11, -57, 55, 196, 78, 47, 12, 34, 128, 91, 29, 4, 158, 101, 84, 34, 148, 102, 50, -128, -69, 3, -67, -119, 170, 70, 91, 115, 49, 103, 174, -78, 78, -5, 43, 172, -2, -146, -47, -76, -4, -21, -238, 61, 184, -135, -156, 342, -18, 168, 80, 124, 72, -160, -69, 405, 287, -328, -18, -477, 171, -284, -143, 142, -142, -187, -209, -22, 425, -91, 331, 281, -49, -67, -27, -151, 122, 62, -145, 169, -159, -52, -98, 273, 83, -106, 38, 201, 141, 122, -112, 29, 133, 125, 119, 116, 27, 297, -88, 48, -82, -10, -104, -24, 1, 114, -233, -76, 73, 3, 180, -106, -55, 89, -212, -76, -205, -184, -73, -190, -130, 16, -482, 38, -51, -88, 153, -232, -10, -128, -273, -336, -431, -87, -188, -158, -167, 77, -14, -14, 334, -369, -319, -47, -208, 46, -253, -265, 262, -94, 325, 245, -94, -198, 162, -356, -121, -520, -93, 76, -197, -194, -192, -192, 120, 211, 239, 66, -307, -154, 88, -235, -49, -148, 63, 97, -82, -269, 18, -162, 20, 296, 171, 73, -56, 13, -22, -84, 23, 24, -59, 22, 47, 92, 170, -74, -25, 300, 86, 35, -106, -150, 89, 15, -70, -163, -21, -100, -57, -60, 83, -216, 119, 147, 178, 56, -59, -228, 208, -186, -130, -196, -104, -279, -127, -207, 97, -246, 101, -17, 153, 16, -154, 17, -45, 292, -256, -45, -39, -51, -117, 133, 101, -170, -355, -77, -77, -353, -1, -65, 72, -41, -112, 34, 46, -10, 117, -14, -40, -137, -139, -148, 31, -118, -3, -78, 177, 44, -172, 101, 53, -5, 122, -3, 42, -3, 59, -29, 88, -35, -55, 16, 300, 18, 107, 75, -135, 147, 104, 19, 16, -13, 19, 71, 147, 74, 58, 51, 101, -28, -124, -84, 3, 4, -75, 41, -223, -82, -77, 60, 91, -81, -23, -161, 114, -24, -88, -31, 6, -7, 44, -12, 183, 39, -73, -126, -12, -14, 31, 306, 3, 301, -110, -117, -13, -8, -13, 28, 29, -57, -53, -44, -72, 98, -29, -37, -23, -3, -143, 76, -25, -20, 59, 79, 43, -36, -46, 99, -1, -48, 134, -187, 24, -80, 91, 191, 36, 26, -69, -24, -2, 1, -164, 59, 86, -51, 52, -57, -39, 57, 34, 229, -55, 27, -23, -2, -72, 97, -95, 32, 63, 15, 149, -157, 146, 123, 131, 223, -68, -2, 183, -88, 116, 38, -236, -138, 20, 125, 42, -90, 243, 46, 77, 103, -10, -16, 85, -47, 207, 141, 51, -22, 65, 104, -36, 286, 66, 98, 93, 280, 53, 262, 245, 117, 35, 78, 73, -17, 33, 18, 172, 142, 146, 11, -85, 199, 94, -44, 118, -52, 126, 109, -18, -79, 119, 26, 162, 8, 210, 37, 85, 63, -11, 57, 97, 86, 11, 48, 25, 264, 151, 22, 28, 79, 156, -17, -64, -223, -64, 27, 32, 34, -15, -9, -17, 30, 142, 27, 67, 229, 325, -143, -61, -160, -14, -52, 88, -315, 91, 25, 56, 52, -13, 7, -65, 191, 143, -82, -14, 135, -4, -33, 55, -74, 324, -43, 266, 85, 213, 30, -63}
+, {41, -41, -43, -20, -69, -104, -56, -31, 137, 58, 39, 48, -179, -133, -42, -100, -224, -155, -20, -10, -68, -22, 15, 66, -136, -84, 6, -34, -142, -153, 20, -25, -230, -360, -94, -30, -97, -4, 79, 2, -34, -161, -17, -28, -127, -97, 129, -46, -73, -225, -153, -105, -169, -101, -38, 38, -152, -158, -108, -108, -272, -165, -65, -163, -104, -184, -300, -72, -262, -121, -65, -64, -196, -94, -21, -174, -113, -215, -135, -192, 116, -133, -99, -136, 6, 12, -70, -25, -246, 170, 30, 35, -50, -184, -43, 85, 42, 120, 0, -52, 69, 138, 5, 16, 47, 44, 78, 13, 95, -5, -36, -52, -26, 58, 211, -125, 22, -219, -52, 8, 0, 17, -66, 33, -42, -29, 11, 8, -33, -21, 219, -417, 102, 50, -201, -43, 116, -46, -104, 133, -68, 17, 21, -49, -179, -20, -11, -387, -66, 104, -333, -150, -35, -75, -175, 153, -53, 6, -11, -181, -154, 41, -157, -255, -53, -187, -107, -158, -130, 119, 80, 96, 152, 84, 144, -62, -116, 104, 127, 7, -7, -222, 141, 36, -161, -12, 184, 131, -21, 91, 183, 212, 19, -233, -147, -15, 45, 67, 161, -41, 48, 137, 53, 124, -79, -108, 203, -132, -9, -45, -57, -39, 70, -6, -112, -24, -237, -10, -45, 51, -158, 88, 88, 34, -20, 168, -165, -80, 31, -74, 131, -95, -128, 70, 65, 25, -88, -59, 111, 85, 44, 134, 134, 146, 131, -213, 143, 18, 26, -87, 164, -34, -118, 31, 163, 87, -113, 171, 42, -115, 87, -231, 44, 4, -60, 32, 275, 158, 96, 186, 128, 97, -144, 132, 36, 28, -24, -104, 81, 132, -21, 202, 234, 122, 89, 247, 149, -82, -54, 63, -159, 152, -78, -17, 139, -139, 145, 29, -149, 53, 145, 142, 66, -81, 43, 130, -35, 101, -45, -9, -102, 61, -91, -53, 34, 130, 103, 119, 147, -17, 103, 45, 62, 30, 63, 133, -71, 44, 46, -23, 60, 54, 34, 106, 132, -1, 11, 120, 66, -72, 24, 3, -89, -202, 122, 57, 115, 134, 83, 124, 7, -128, -13, 40, -127, -26, 78, 123, 3, -22, -152, 60, 97, 77, -85, 201, -6, 19, 29, 179, -4, 25, 54, -121, 126, -50, -196, 143, 159, 43, -17, -45, 77, 161, -83, -121, -27, -68, -13, 24, 194, 85, 103, -85, 75, -110, -46, -30, 107, -103, -118, 178, 58, -12, -27, -155, -37, -181, 143, -262, 55, 82, 20, 71, 13, 58, 163, 87, -73, -102, -45, -1, -8, -179, 148, 106, 71, 98, -134, 13, 100, -6, -62, -53, 41, -65, 80, 9, 15, 116, -7, -141, -1, -11, -170, 48, -38, -137, -106, 179, 23, -131, -81, -86, 24, -47, 45, 90, -164, 132, -77, 147, 29, -49, -128, -127, -248, 3, -71, -102, 5, 167, -172, 126, 29, 99, -28, 108, 68, -115, -51, 34, 31, -71, -33, -54, -55, -11, 26, 34, -61, -99, -69, -52, -32, 94, -214, 50, -59, -209, -77, 32, -3, -7, 44, -112, -79, -57, -15, -76, -53, 21, 19, 202, 22, -65, 169, -43, 6, 49, -219, 46, -22, -82, 81, 44, -68, -28, -149, 57, -2, -95, -34, -10, 69, -198, 22, 45, -216, -211, -27, -120, -53, -120, -19, -46, -89, 145, -162, -5, -102, -103, 10, -210, -200, -89, -68, -219, -112, -104, -111, -16, -215, -250, -215, -42, -360, 9, -269, 88, -125, -40, -38, -188, -117, -217}
+, {196, -136, 218, 191, -77, -105, 249, 33, 155, 181, 278, -87, -139, -186, -18, 198, 139, -2, -31, 221, -21, -96, 294, -130, -84, 9, 389, -229, 35, -70, 85, 430, 126, 82, 182, 136, 2, -2, 214, -291, -139, -75, 280, -88, 94, -41, 46, 225, -175, 10, 111, -38, 86, -158, 6, 221, -6, -14, 11, -60, 53, 60, 72, 105, -274, 0, -22, -1, 100, -385, 66, 22, 48, -100, 50, -85, -149, 34, 66, 173, 78, -62, 9, -27, -7, 26, 41, -86, -51, 163, 26, 18, 178, -63, -61, 61, -34, -87, -249, 301, -103, -54, 50, -52, 31, 67, -49, -87, -34, -143, -18, 111, -33, -48, -280, 253, -79, 5, 83, 62, -461, 64, -172, -21, 31, -232, -172, -111, 10, -30, -84, 70, 22, 24, -8, 237, -546, 25, 26, -60, 31, -212, -88, 46, 15, -54, 57, -34, 63, -380, 34, -22, -51, -74, 54, 33, -407, -43, 128, 25, -10, -54, -41, -152, -56, 14, -1, -80, -52, -233, 140, -23, -116, -128, 70, -34, -70, -180, -59, -1, -72, 154, -72, -26, -150, -215, 40, -7, 79, -1, -1, -68, 193, -106, 45, 221, -26, -41, -12, -74, 70, -48, -126, 96, -120, 82, -81, -84, -67, -224, 38, -276, -25, -41, -136, 53, -84, -230, 59, 8, -168, -91, -73, -103, -42, -33, -225, -263, 53, -4, -7, -49, -230, -137, 168, 78, 18, -53, 202, 115, -31, 54, 16, 54, 93, -260, 206, 18, 92, -108, 29, -80, -37, 38, 188, 26, 5, -24, -10, 24, -49, -61, 71, -164, 47, -13, -11, 2, 1, -20, -99, -117, -103, 75, -29, -161, -197, 27, -231, -183, -34, -136, -194, -7, 205, 32, -137, -82, -66, 290, 209, -235, 79, -174, -24, -339, 178, -357, -201, -32, 0, -22, -77, 287, -455, 317, -19, -242, -310, -132, 91, -511, -242, -271, -75, 133, -73, 133, 159, 205, -234, 109, -132, -252, -13, -107, 91, -23, -218, -108, 136, 153, 92, 234, 144, 119, 98, 81, -10, -25, -29, 54, -30, -126, 167, -46, -1, -8, -7, 80, 56, 52, -12, -181, -45, -96, -48, 145, -92, -48, -80, -22, -293, -109, 140, -42, -99, -103, -27, 6, -53, 57, 29, -90, 90, -37, 24, 17, 51, 53, -133, -110, -95, 186, 178, 188, 120, 88, -69, 7, 41, -71, 190, -62, 42, -76, 116, -12, 71, 205, 4, 259, 33, -306, 120, 144, 2, -40, -44, 123, -113, -187, 111, 124, -240, 7, -238, 114, 52, -174, 31, 101, -125, -155, 35, 2, -119, -12, 72, 14, -79, 40, -58, 36, 89, 14, -51, -1, 26, -132, 115, 134, 5, 7, -171, -60, 24, 151, -21, 193, 48, 17, 108, -40, -1, 227, 34, -78, 243, -30, -238, 117, 55, 63, -3, 375, 177, -28, 167, -129, 6, 21, 26, 229, 162, 146, 59, 55, 77, 272, 386, -164, 30, 150, 169, 37, 126, 110, 22, -50, -14, 30, -111, 135, 80, -77, 86, 140, -66, 158, -72, 13, 87, 94, -155, 32, 95, 50, -5, 74, 122, -15, -107, 312, -49, 8, 12, -40, 30, 66, -316, -103, 48, 126, 41, 58, 77, 53, -71, 106, -25, -97, 95, 95, 122, 45, -31, 51, 41, 62, 1, 9, 52, 154, -3, 241, 63, -61, -73, -129, 61, -181, -10, 182, 27, -7, 77, 200, -34, 34, 448, 239, 258, 107, 209, 50, 323, 225, 98, 437, 86, 81, -87, 195, 119, 344}
+, {84, -172, 87, 152, 32, -79, 30, 82, 5, -109, -76, -56, -128, -28, 166, 64, -66, -65, -105, -31, -149, -22, -102, -4, -1, -232, 28, -18, -30, 36, 230, -81, 69, -20, -43, -210, -44, -24, -137, -10, 42, 45, -87, -3, 30, 13, 152, -57, -18, -21, 17, -123, 56, 68, -149, 171, 107, -58, 131, 68, -1, 66, 102, -179, 232, -89, -52, 125, 4, 281, 17, 33, -36, -58, -17, -64, 61, -31, 38, -24, 542, 53, 19, 10, 188, 109, 76, 83, 21, 54, -83, -52, 210, 77, 58, 129, -10, -17, 73, -156, 97, -60, -75, 17, -94, -62, -31, 30, 101, -133, -93, -98, -25, -10, 158, 33, -86, -35, -72, -117, 53, 32, -17, -77, 2, 130, -135, -109, 62, -55, 107, 13, -47, 51, -40, 106, 11, 18, -175, -27, 60, -237, -35, -92, 33, -106, 179, -23, 16, 59, -80, 41, 160, -57, -72, -66, -67, -161, -148, -40, 300, -156, -14, -6, -19, 168, -119, -24, 17, 139, -20, -62, -34, -87, -136, -116, 137, 40, -32, 0, 111, 81, -42, 54, 34, 348, -277, -78, -31, -166, -109, -20, 70, 92, 174, -83, 66, -6, -18, 149, 63, 73, -109, -6, 5, -53, -43, -51, 17, -65, 307, -163, 132, 92, -285, 34, 102, 6, 89, -107, -150, -162, -69, 99, 89, -182, 166, -69, 128, 24, 43, -82, -108, -10, 182, -30, -333, -77, 26, 96, 115, -135, 75, 9, 76, -2, -76, -30, 25, -71, -55, -243, 88, -182, -417, 24, 151, -114, -8, 200, -150, 110, 159, -151, 100, 295, -301, -350, 64, -231, -81, -157, 145, -92, -185, 148, -302, 19, 82, 205, 4, 312, 44, -79, 198, -92, 91, -71, -205, -6, -31, -101, 113, 91, 113, -38, -38, 158, 80, -171, 100, -133, 46, 88, -37, 72, -25, 25, 134, -155, 1, -58, -231, 1, 12, 154, -70, -38, 116, 207, -125, -77, 50, -86, -101, -148, 104, -31, -255, -23, -26, 24, -15, 59, -16, 111, 56, -273, -38, 135, -37, -17, 152, 95, 24, 98, -8, -142, -304, -287, -145, -149, 32, -135, -16, 31, 31, 103, 109, 189, 18, -139, 36, -72, 165, -116, 51, 4, -226, 227, -257, -238, -305, 82, 116, -46, -138, 102, 271, 164, 220, 139, 263, -156, -50, 43, -106, 416, 87, -9, 49, -61, -74, 95, 22, 135, 139, 215, 112, -121, -178, -62, -32, 250, -109, 92, 122, -49, -169, -16, 10, 53, 163, 151, 30, -106, 15, -217, -63, 236, -111, 223, -6, 131, 22, 217, -52, -169, -2, -142, -115, -301, 69, -150, 18, -28, -93, 104, -105, 44, 73, -164, 47, -61, 57, 41, -17, -117, 72, 109, 78, -180, 36, -134, 170, -36, 55, -37, -41, -44, -166, 113, 79, 40, -139, 130, 1, -98, -165, 32, 119, -149, 45, -104, 172, 384, 13, 297, 117, 88, 10, -54, 52, -32, -110, 74, -6, 60, 79, 14, -99, 65, 42, 140, 27, -119, 207, -236, 44, 49, -4, 148, -18, 14, 219, 183, -68, -32, -39, -19, -84, -120, 252, 13, 62, -7, 51, 23, -40, -152, 427, -147, -75, 16, -291, -103, -48, 100, 150, 22, 182, -109, 91, 123, -29, -110, 84, -162, 41, 98, -307, -71, 36, 91, 125, 280, 262, -61, 208, -111, 38, -104, 189, -44, 178, 142, -127, 71, 16, 214, 164, 188, 375, 47, 189, 45, 348, 1, 109, -8, 69, 57, -72, 150, -25, 338}
+, {78, 70, 95, 43, 79, -145, 84, 69, -17, 37, -19, 92, 21, -100, 72, 19, 51, 88, 164, -62, -7, -112, 51, 94, -115, 7, -134, 176, -34, 44, 125, -69, -101, -20, 121, -182, -31, 70, -48, 205, -2, 51, -289, 105, -24, 82, 65, -281, 19, -54, -71, -131, -145, -37, 9, 15, -67, 53, 6, -31, -64, 24, 32, -187, -5, -44, -52, 158, 9, 66, 99, 296, 0, 14, 4, -58, -77, -3, -46, 33, 45, 219, -26, 184, 128, -187, -51, 146, 41, 87, -116, -151, 226, -6, -87, 34, 69, 7, -62, -117, -62, -121, -88, 108, 3, 7, -171, -117, -120, 68, -180, -158, 53, -82, -216, 178, -87, -11, -202, 42, -46, -37, -266, -242, 15, 78, -548, -165, 233, 80, -61, 93, -171, 88, -12, 62, 192, 64, -307, -319, 50, -86, -191, -64, 61, 4, 32, -7, 33, 104, -15, -26, -33, 109, -33, 31, 40, -136, 85, -4, -28, 3, -36, 38, 31, -90, -15, -47, -5, 144, 3, 155, -38, 32, 178, 24, -155, -52, -135, -74, -95, -117, 191, 112, -17, -51, 114, 33, 174, -33, 96, 187, 12, -139, -26, 71, -139, 97, -100, -49, -76, 104, -81, -187, 7, -268, -112, -24, 94, -205, 115, 31, 189, 74, -36, -18, 145, -34, -62, -596, -68, -832, -190, 19, 126, -187, 166, -58, 73, 2, -181, 65, -24, -70, 4, -20, -221, -122, -60, 58, -20, -10, 56, -89, 22, 31, -194, -131, 28, 19, -11, 50, -13, 30, 21, 43, 10, -4, 116, -54, 158, -87, -230, -30, 40, -54, 40, 206, -4, 52, 92, -3, 115, -24, 176, -170, -130, -132, -147, -214, -6, 2, 160, 224, -30, 84, -59, -31, 64, -61, -73, -263, 231, -197, 144, 13, -35, -59, -30, -76, -21, -184, -26, 77, -97, 52, 41, -289, 144, -171, 81, 45, -143, -97, 25, 67, -410, 28, 11, 57, -367, 119, 49, -154, 5, -730, 143, -33, -421, -496, 101, 167, -301, 117, 129, 101, 11, 250, -115, 21, -46, -215, 177, 143, 6, -227, 48, 12, 12, 47, -36, 15, 16, -187, -67, 78, -85, 113, -78, 42, 52, 148, -83, -24, -15, -62, 28, -181, -20, -147, -104, -7, -72, 59, -71, -4, -43, -178, -145, -80, 41, -210, -73, -44, 34, -142, -48, 87, -85, 75, -35, -46, -94, -68, 73, 67, -71, 56, -22, -78, -177, 193, -16, 82, -125, -18, 146, -52, 228, -272, 84, 109, 44, 1, 145, 31, -122, 162, 1, -227, -51, 10, 61, -3, -95, -119, -24, 204, 114, 162, 211, 115, 56, -12, -82, 53, -114, -56, 17, -134, 58, 6, 77, 26, -30, -78, 41, -141, 33, -214, -58, -18, 42, 164, -133, 94, 21, 67, 48, -424, -29, -301, -131, -296, 99, 129, 144, -179, 108, -99, -257, -162, -25, 85, -2, -196, -310, -21, -203, 94, 29, 118, 3, -19, -69, -153, -97, 3, -9, -105, -189, -24, 31, 7, -89, -140, -82, 28, 3, -84, -141, 66, 32, -208, 41, 67, -22, -12, 74, -6, -25, -50, 19, 99, -94, 52, 36, -36, 49, 130, -13, 19, 2, -89, -30, -25, 21, -41, 21, 33, 112, -25, 42, 170, -37, -70, 97, -119, -32, -128, -119, -191, -40, -3, 80, 606, 74, -143, 201, -39, -49, -32, 61, 145, 74, -51, -145, -71, -69, 5, 337, 4, 310, 43, 262, -184, 225, 148, 183, 180, 229, 254, -244, 79, 30, 402}
+, {43, 182, 138, 64, 177, 66, -40, 146, 36, 114, 229, -25, 84, 18, -52, 238, 278, -148, 34, 352, -30, -150, 194, -83, 318, 255, 199, -76, -39, -173, 134, 315, 46, -51, -284, 516, -143, 120, 425, -52, 44, 71, -139, -86, 40, -127, -169, -61, 153, -15, 19, 267, -83, -2, 55, 1, 17, 85, -191, -19, 161, -66, 115, 63, -118, 98, 68, 54, -21, -123, 38, -29, -3, -69, 62, -21, -145, 13, 43, 49, 0, -158, 2, 76, 109, 137, -32, 252, -35, -270, 209, 128, -71, -8, 58, -66, 222, -29, 88, 144, -22, -72, 111, 32, 10, 112, -34, 191, 17, -71, 171, -20, -1, -71, -275, 369, -223, 58, 204, -98, 5, 54, -361, -129, 26, -54, -34, -150, -33, 3, -271, 219, -279, 66, 73, -119, -39, 56, -78, -179, 194, -136, 99, -121, 10, 53, 4, 125, -212, -155, -61, 142, -81, 170, -41, 60, 47, -90, -108, -57, 18, 79, 30, -346, -74, -21, -157, 57, -75, -187, 143, 29, -246, 33, -67, -25, -129, -109, 23, -262, 85, -16, -168, -210, 51, -32, -258, -1, -145, 26, -216, 7, 201, 137, 109, 71, 219, 87, -46, 65, 87, 15, 246, -73, 127, 10, -26, -54, 54, 61, 97, 142, 0, 105, 30, -55, 291, 90, -54, -143, 24, -68, -110, -85, 39, -227, 72, 20, -17, 24, -10, 75, -76, -22, -43, 77, -67, 65, -163, -99, -13, -55, 10, -273, -134, 81, -68, -288, -285, 20, -306, -59, 147, -38, -496, 164, -7, 30, 35, 125, -255, -201, 62, 1, -26, 68, -381, 39, 185, -54, 4, 60, 127, 36, 144, 119, 110, 81, 18, 78, 97, 68, -94, -21, 62, -111, -76, 62, 36, -190, 60, -37, 34, -5, -179, 65, 31, 105, 33, 110, -18, -4, -64, -27, 55, -103, 76, -54, 187, -14, -76, 24, 86, 22, 4, -16, -49, -185, -95, 112, -87, 11, 37, -38, 109, 22, 91, -99, -324, 66, -75, -171, -82, -222, -58, 49, -137, -142, 15, 106, -95, -345, 76, 416, -81, 66, 8, -50, -218, -257, 10, -33, -48, -52, -60, 87, 16, -10, -5, 168, 17, -205, -21, -129, 99, -94, 145, -94, -156, -7, -11, -3, -81, 115, -144, 74, -179, 33, 21, -32, 103, -49, 32, -125, 112, -157, -10, 161, 208, 2, -47, 30, 103, 106, 37, 59, -13, 65, 76, 192, 147, -272, 37, -93, -33, 23, 56, 61, -29, 7, 171, 59, -188, -156, 41, -31, 52, -248, 106, -69, 73, -87, 53, 161, -29, -152, 113, 90, -182, -58, 75, -69, 65, -130, 100, -101, -70, 1, 35, -42, -60, -67, 152, 164, 15, 127, -35, 69, 76, 72, 114, -22, 162, 114, -47, -23, 59, -147, 139, -164, 88, 51, -63, 6, -76, 259, -50, 4, -5, -198, 240, 6, -54, -30, -99, 54, -102, 91, 46, 249, 167, -188, -34, 69, -214, -60, -74, 30, -130, -63, -10, -23, 1, -34, 43, -149, -14, 162, 90, -136, 144, 35, -30, -127, 32, 4, 31, 60, 115, 69, -2, 193, -54, 121, 101, -121, -17, -51, 11, 61, -291, 141, 4, 24, -33, 75, -45, 140, -19, -193, 61, 52, 55, -42, -36, -12, 72, 145, -8, 58, 104, 33, 10, 80, 65, 135, 176, -31, 207, -32, 103, 39, 157, 146, 193, -64, 37, 60, -20, 47, -26, -9, 137, 104, 154, -64, 2, -28, 168, -35, 96, 23, -43, 200, -56, 251}
+, {32, 188, 118, -84, -9, 21, 39, -60, -17, 29, 137, 27, 40, -21, -108, 203, 141, 51, 106, 297, 38, -64, -76, 120, 52, 57, 40, 46, 13, -36, -148, 65, 157, -67, -5, 208, 86, -17, 187, 49, 292, 61, 19, -51, 69, -30, 197, 25, 139, -72, 65, -37, 107, 120, -45, 5, 79, 14, -40, 32, -16, -71, -3, 87, 180, -43, -38, 98, 69, 57, 40, -33, 24, 63, -157, -75, 70, -146, -34, 20, 56, 73, 178, 1, 2, -16, 94, 273, -67, -12, 84, -184, 53, -109, -37, -9, 125, 180, 255, 56, 278, 59, -14, 81, 57, 156, 210, 56, 122, -7, 104, 330, 193, 59, 202, 141, -84, 18, 224, 32, 415, -23, 167, 354, -100, 139, 246, 72, 147, -147, 6, -20, -228, 25, -237, 72, 402, -102, -64, 230, -44, 53, -185, -265, 305, -144, -84, 93, -246, 205, -201, -83, 183, -7, -386, -450, 12, -106, -503, -411, 225, -39, -162, 191, -282, 302, -114, -119, 55, 182, -283, -106, 189, -42, -57, -318, 132, -33, -27, 8, -167, 39, -165, 67, -94, 154, 128, 135, 239, 62, 120, -56, -18, -1, 42, 23, 50, -30, 173, 55, -56, 11, 133, 293, -114, 282, 73, 154, 51, 99, -119, 26, -7, 112, -48, -6, 247, -5, -3, -204, 123, 289, -137, 63, 93, 10, 107, -9, 25, 152, 1, -25, 245, 52, -115, -217, 52, -238, 131, 32, -61, 9, 7, 138, 39, 9, 140, 30, -136, 83, -25, -153, -14, -104, -94, 52, -83, 113, 57, -15, -8, -57, 160, 227, -142, 202, -182, 106, 64, 178, -33, 54, 53, 29, 41, 7, 70, 12, -25, -27, 106, -42, -89, 80, -202, 209, 9, 99, 71, -67, 134, 254, -39, -66, 131, 66, -18, 59, -71, -77, 109, 74, 33, -31, 156, -237, -24, 203, -14, 84, 73, -82, 272, 77, 31, 28, 35, 36, 45, -110, -51, 73, -33, -13, 51, -233, 60, 14, -95, -84, 21, 27, -72, 118, 31, 56, -144, 3, 49, -94, -14, -138, 49, 44, -291, 172, 32, 79, 23, -111, 109, 258, 26, 181, 62, 23, -53, -50, 66, 123, 12, -64, 73, 139, -156, -204, 228, 122, 112, 56, 74, 141, 65, 69, -39, -31, 111, -132, -87, -182, 89, -292, -97, -96, -75, -141, 54, 99, -46, -109, 115, -208, 170, -181, -33, 41, -244, 46, 27, -90, 63, -10, -190, 75, -68, -66, -217, -38, -36, -107, 8, -76, 72, -48, -19, -67, -17, -124, -61, -191, 30, 40, -137, -30, 218, 65, 22, 19, -71, -36, -71, -127, 9, 80, -85, 39, -31, 70, -16, 79, -65, 6, 35, -89, -53, -171, -163, 70, 5, -272, -85, 78, -22, 60, 66, 27, 54, 137, -153, 7, 91, -22, 19, -182, -36, -184, -75, 109, -50, 22, -178, 113, -113, 49, -201, -239, 211, -173, -40, -215, -47, 159, -13, -48, 110, -111, -147, -46, 32, -142, -61, -173, -3, -75, -187, 348, -1, -70, 65, -135, -35, 3, -93, -131, -158, 8, 11, -91, 31, 14, -63, -37, 52, -17, -40, 103, -95, 44, -22, -114, -76, 2, 34, -7, -22, 20, 13, 136, 35, -70, -7, 53, -32, -6, -70, -100, -24, -7, 56, 82, 123, 57, -34, -24, 2, 78, -80, -40, -114, 103, -49, 10, -54, 162, -27, 26, 51, -18, -99, 54, -53, 146, -30, 151, 53, -63, -77, -122, -5, 5, -85, 5, -14, -220, -66, -180}
+, {202, 118, 360, -57, -75, -40, -14, 103, -37, 209, 315, -36, 45, -5, -156, 131, -32, -19, -40, 180, -175, -28, 220, -164, 2, 48, -17, -95, -6, 44, 94, 202, 76, 39, 53, -35, 74, 58, 155, -70, 29, -50, 350, 6, 47, -70, 134, 191, -23, -7, 32, -214, 217, -172, -108, 202, 61, -77, 245, -22, 3, -5, 127, 138, -103, -62, 39, -295, 122, -185, -87, 275, -28, -172, 67, 64, -258, 54, 38, 65, 113, -144, -79, -122, -11, 109, -284, -27, -37, -89, -24, -24, 20, -207, -187, -62, 141, -60, -56, 199, 63, -30, 249, 53, -117, 18, 136, 7, -85, 32, 378, 128, 100, -37, -54, 190, -69, -51, 58, -83, 341, 23, 77, 69, 56, 106, -8, -12, -88, -35, 24, 56, -138, -111, -36, -28, 257, -106, 184, 112, -110, 217, -52, -44, 224, -89, 84, -109, 77, 61, -144, -6, 162, -207, 75, -138, -394, -82, -187, -25, 223, -211, 226, -256, 230, -80, -341, -13, 143, -364, -173, -214, -264, -158, -337, -81, -57, -260, -67, -62, -146, 5, -121, -74, -43, -211, -309, -117, -383, -142, -406, -134, 66, 80, -23, 61, -141, -53, 229, -21, 68, -109, -57, 60, 18, 3, 115, -91, -109, 286, -61, -147, -237, -93, 30, -114, 155, -182, -71, 177, 312, 61, 21, -42, -119, 117, -2, -72, -120, 62, -23, -93, -152, -62, -31, -15, 228, 7, -159, 101, 19, -186, 104, 45, 4, -18, -8, -33, -122, -120, -47, -275, -28, -71, 1, 16, 173, -128, -10, 232, 64, 65, 129, 273, 167, 314, -91, -182, -137, -184, -51, -111, -109, -109, -82, -54, -47, 175, -278, -114, -38, 136, -109, -169, 203, -226, 27, -189, 10, 264, 284, -26, -47, 4, -15, -181, 31, -79, -178, -93, 124, -107, -182, 113, -210, 6, 15, 32, -21, 64, 173, -54, -55, 133, -59, 5, 71, 23, -53, -13, 20, -203, 24, 84, -86, -32, 51, -138, 52, 138, 153, 78, 85, -38, 53, 12, -228, -133, 46, 47, 133, 42, 152, 68, -57, -195, 35, 16, -124, 13, 74, 35, 6, -119, 36, -112, -69, -153, -221, 7, 88, -111, 29, 35, 132, -90, 168, -41, -3, 110, 77, -58, 157, -32, -35, 57, -9, 109, 9, -32, -83, -47, -176, 67, 382, 7, 206, 11, 162, -14, 155, 198, -7, 319, 172, -128, -65, -105, 16, 51, 114, -145, 9, 129, 26, 136, 31, 105, -159, 109, 49, 30, -24, 18, 86, -6, -80, -47, -37, 44, -66, -133, -67, -163, 78, 25, 30, 73, 108, 26, 71, -36, 5, 0, 4, -61, -102, -208, 171, -47, -142, -25, 186, 59, 181, 71, 30, 68, 33, 34, 73, -29, 46, 54, -81, 68, 1, 16, 195, 32, -83, 46, 19, -27, 177, 40, -66, 117, 187, -29, 60, 160, 103, 278, 104, -48, -4, 59, 191, -15, 162, -15, 103, 304, 293, 27, 50, 218, -39, 89, 195, 98, -34, 63, 57, 358, -82, 183, 107, -144, -159, 112, -3, -15, -49, 43, -13, 34, 116, 82, -20, 76, -146, 186, 26, -20, -108, -142, 28, 98, -589, 64, -32, -20, 17, -92, 5, 90, -93, 230, -8, -15, -250, -22, 35, 67, -319, 231, -73, 58, 49, -130, 50, 84, 136, 192, 89, 112, 33, 87, 81, -59, -73, 109, 129, 43, 50, -124, 78, 19, 62, 236, 109, 185, 188, 168, 179, -42, 118, 106, -38, 10, 39, -192, 51, 198}
+, {71, -102, -173, 17, -26, -56, 156, -27, 93, 31, -89, 78, -45, -6, 141, -128, -19, 4, -67, -28, -91, -18, -16, 33, -237, 129, -132, 14, 98, 81, 18, -148, 3, 109, 31, 170, 139, 23, 195, 50, -217, 1, 97, 11, -31, 6, -16, -16, -27, -11, -41, 1, -80, -73, 99, -18, 24, 121, 78, -67, 36, -4, 2, 64, -174, 17, -66, 154, 68, 100, 98, 47, 97, -72, 150, 67, -102, 17, -40, -19, 27, -46, -194, 104, -53, -144, 104, 121, -40, -21, 127, 119, -20, -58, -43, -42, 187, 161, 269, -71, 78, 10, -98, -26, 193, -66, 40, -131, -75, 188, -136, -27, 39, 65, 233, -175, 200, 103, -65, 267, 159, 104, 226, 1, -52, 59, -74, 168, -62, 130, 143, -81, 145, -84, 49, 157, -101, -65, 1, 124, -119, 192, -134, 56, -29, 101, -21, -100, -80, -519, 125, -20, -371, -112, 66, 191, -137, 143, 127, 92, -1, 99, -2, 195, -38, -124, 171, -160, 122, 55, -290, 7, 220, 132, 62, 67, -27, 193, 9, 100, -39, -11, 136, 35, 10, 17, -96, -9, 222, 27, -39, 71, -275, -93, -132, -29, -17, -44, -16, 109, 44, -230, 68, -4, -160, -42, -17, 252, 42, 5, -71, -158, -1, -17, 103, -33, -133, -18, 62, 100, -185, 177, 77, 51, -20, -185, -29, 134, -43, -17, -27, 43, 91, -152, 48, -37, -208, 38, -49, 77, 24, -82, -50, -143, -12, -53, -5, 25, -272, -246, 125, 106, -21, -43, 154, -5, -24, 150, -153, 82, -248, -88, 160, 71, -9, -26, -11, 90, 28, -61, 212, 38, -235, -175, -283, 28, 9, 142, 273, 216, -203, -77, 287, 282, 220, 131, 359, 7, -151, 28, -193, 6, -103, 76, 124, 82, 65, 43, -26, -1, -128, 91, 42, -99, 45, 192, -125, 170, -203, -23, 27, -145, -34, -33, -77, 24, 197, 203, 70, -179, 33, 39, -21, 46, -108, 75, -24, -116, 75, 114, -99, -136, 98, -231, -154, 60, -39, -285, 253, -90, 92, -127, -225, -26, 88, 31, 213, 68, -126, -44, 10, -88, -33, -47, 71, -187, 53, -65, -9, -189, -43, -112, 12, 388, 95, 146, 37, 178, -69, 16, -142, -45, -53, -274, -110, -217, -43, -105, -246, -6, -133, 181, -132, -81, 6, 22, -41, -1, -167, 37, -70, -213, -38, -166, -209, 43, -120, 33, 4, -305, 108, 65, 36, 237, -24, 47, 79, -147, 18, 12, -67, 43, 93, 45, 5, 2, -11, 42, 98, -86, -94, -10, 134, -30, 110, -82, 32, 82, 56, -11, -69, -76, -21, 58, 36, -121, -84, 89, -101, 8, 82, -85, -140, -82, -190, -79, -458, 126, 66, -332, 111, -16, 131, 41, 11, 47, 4, 91, -43, -123, -143, -225, -114, 123, -40, -257, 36, -61, -39, 104, -209, -85, 180, 7, -247, -332, -101, -164, -143, -69, -176, -51, -33, -167, 249, 18, 40, -112, 114, 331, -102, -206, 15, -176, -91, 180, -14, 109, -100, 98, 235, -77, -47, -35, 207, 46, 28, -73, -32, -29, -113, 28, 21, 75, 84, 2, 161, -29, 114, -76, -154, 65, 9, -16, -3, 31, 40, 105, 44, -93, -52, 105, -78, -24, 74, 37, -19, 107, -53, -196, 136, -126, -68, -27, -48, -345, -106, 211, -226, 258, -114, 87, -16, 225, -182, -205, -101, -196, -166, -291, 115, -176, 9, -6, 13, 261, -168, -69, 126, 43, -128, -410, -8, -127, -47, -201}
+, {-66, -10, 117, -9, 140, -20, 58, 62, -67, 5, 242, 59, 89, -51, 99, -6, 56, -4, -24, 89, 163, 71, -18, 41, 194, 124, -22, 75, -79, -97, 2, 99, 53, -100, -119, 382, -196, 80, 77, 6, 141, 40, -411, -77, 100, -23, -57, -214, 144, -54, -60, 178, -56, 127, 118, 25, 13, 8, -167, -10, 4, -86, 48, -103, 66, -9, -188, 166, 75, 156, 222, 120, 6, 100, 191, -70, 39, -39, 11, -106, 233, 103, 139, 127, 83, -109, 197, 308, -33, 39, 238, -25, 263, -27, 201, 173, 28, -311, 3, -100, -7, -197, -112, -37, -217, 13, -25, 47, -257, -150, -162, -115, 233, -106, 56, 223, -13, 68, -160, 32, -13, 42, -209, -274, -39, 86, -225, -154, 94, 31, -193, 204, -222, 59, -17, -56, 260, 70, -504, -129, 77, -24, -167, -138, -40, 30, -187, 54, -280, 27, 180, -86, -6, 164, -70, 128, 189, 11, 35, -50, 22, 39, -70, 20, -133, 43, 97, -31, -58, 17, 10, 54, 207, 28, 262, 29, -37, 10, -86, 16, -118, -1, 133, 161, -160, 97, 205, 103, 334, 66, 359, 62, -77, 149, -91, -1, -243, -235, -133, -229, -75, -293, -49, 23, -78, 46, -163, -136, 159, -19, 122, -51, 134, 65, -251, -50, 86, 100, -17, -609, 54, -446, -381, -60, 103, -235, 287, -39, 111, -1, -209, 68, -33, 86, -131, -222, -168, -315, -373, -60, -104, 125, 47, -106, -114, 199, -68, -263, -334, 11, -271, 89, 175, 97, -62, 106, -35, 64, -3, -20, -232, -327, 129, -99, 15, 144, -74, 232, 100, 175, 150, 44, 7, 109, -15, -51, -60, -127, 157, -17, 10, -105, 33, 353, 153, 160, 59, 1, -254, 75, -49, -160, 9, 7, 69, -151, -103, -144, -145, -8, 214, -74, -22, -9, 80, -168, 108, -123, 107, 94, -135, 59, -36, 9, 115, -5, -147, -64, -93, -139, -67, -134, 109, -14, 110, -118, 81, -6, -252, -216, 97, 141, -254, -15, 15, 163, -5, 116, 34, 4, 60, -150, 70, 212, -28, -147, 101, 94, -131, -40, -20, 112, -143, 221, 48, 37, -134, -130, 6, 71, 48, -322, -124, -23, 272, 140, 41, 44, 56, -7, 93, 39, 8, 98, -74, -145, -17, -246, -25, 20, 105, 70, 34, 64, -67, -10, -113, 48, -169, 78, 31, -111, 25, -21, -124, 17, -9, -49, 72, -163, -23, 88, -52, 44, -36, 8, -70, -32, 134, 26, 10, 10, 152, -36, -56, 34, -61, -194, 12, -28, -36, -28, 0, 116, -90, 8, 2, -51, -138, -182, -81, 53, 17, -102, 61, -17, 60, -159, -95, 191, 91, -73, 0, -4, -269, -216, 19, -55, -12, -118, 18, 18, -32, -65, 1, -78, 47, -142, 55, 91, 141, -47, 36, 38, 92, -89, 76, -93, 103, -34, -19, -110, -22, 69, -17, -72, -72, 17, -41, -50, -175, -74, -88, -136, 11, -243, -240, -118, 70, -194, -297, -147, -25, 13, -294, -99, -29, 94, -43, 30, -3, 103, 2, 9, 61, 78, -14, -54, -67, 35, -72, -25, 81, -25, -45, 16, 31, -35, -50, -24, 93, -67, 0, 3, 4, 82, 9, 61, 70, -65, 130, 42, 128, -19, -57, -44, 122, -41, -19, -40, -61, -13, 4, -12, -16, 68, 109, -74, 21, 55, -113, 5, 15, -154, -48, 29, -14, 7, -110, -93, 229, 236, -77, 28, 152, -64, 51, -17, 77, 86, 81, 121, -161, -15, -35, 81}
+, {119, 169, 323, 184, 117, 110, 108, 172, 33, 204, 278, 111, 214, 73, 90, 155, 103, -23, 17, 73, -124, -100, -17, -156, 36, 50, 57, 97, -42, -10, 216, 159, -12, -6, -51, -38, -68, 106, -74, -8, -163, -24, -42, 27, 27, 43, -67, 23, -94, 8, 92, -77, 26, -64, 79, 17, 7, 41, 26, 49, 16, 27, 96, 45, -42, -154, 4, -67, 34, 82, -26, -145, -21, -204, 136, 5, -195, -37, 131, -62, -249, -292, -262, -220, -160, 182, -159, -225, -145, -253, 70, -137, -102, -56, 105, -260, -17, -41, -66, 115, -4, -27, 102, -54, -33, 131, -85, 92, -6, -151, 74, 97, -73, -9, -350, 125, -138, -22, 118, -113, -304, 38, -85, -34, -15, -69, 12, 67, -282, 48, -396, -45, -200, -95, 40, 8, -804, -16, -10, 64, 163, 9, -59, 62, 30, 1, 16, -35, 20, -134, -74, -14, 163, -41, -47, -70, -15, -112, -64, -2, -76, -80, -25, -186, 95, 119, -221, 103, 13, -278, -145, -219, -620, 13, -389, -53, -307, -260, -35, -146, -132, -35, -327, -145, -10, -376, -278, 58, -140, -76, -473, -143, 277, -114, 181, 211, -21, -69, 20, 10, 121, 3, -13, 49, -105, 28, -13, -73, 86, -87, -77, 109, -171, -15, 1, -53, 268, -29, -16, -49, 65, -140, -67, -72, -112, -8, -87, 12, -120, 62, 101, 5, -101, 78, 13, -52, 206, -45, 45, 46, -1, -163, -23, 196, 199, -156, 128, -28, 18, 37, -94, -244, 208, -115, -110, -4, -62, -33, 46, 129, -93, 28, 28, -25, 62, 47, -270, -184, -199, -208, -54, -26, -89, -282, -93, -36, -159, 222, -147, -235, 129, 55, -476, -310, -295, -147, -193, -161, 282, -78, 378, -297, 102, -58, -291, 93, 66, 2, -50, 64, -226, 100, -122, 20, 98, -113, -25, -391, 59, 72, -257, -94, 390, -302, 71, 17, -191, -55, -11, -35, -192, -86, -8, -281, 175, 75, 86, 51, -16, -102, 159, 98, -149, 103, 82, -23, -22, -9, 8, 130, -1, -204, 169, 157, 24, -148, 155, 0, -79, 33, 50, -153, -60, -3, -24, -75, 52, 106, -372, -26, 32, -222, 2, -43, -285, -243, -15, -39, -234, -112, 15, -144, 138, -18, -419, -38, -37, -264, -228, -43, 73, -46, -167, -198, 170, -1, -11, -11, 1, -64, 34, -37, 117, 5, 108, -37, 150, 67, 86, 22, -80, 57, 127, -431, 113, -50, -4, -421, 209, -126, 73, 136, 29, 114, 14, 90, -248, 122, -6, -230, -228, -119, -9, -96, 48, -79, 56, 82, 53, 128, 84, 150, 48, 98, -4, -4, 36, 75, 23, -86, 142, -3, -9, 83, 55, 140, 52, 43, 105, -279, 44, -23, 80, 99, 9, -58, -6, 102, -248, -215, -74, -162, -140, -80, -13, -238, -90, -92, -190, 124, -188, -73, -82, -27, -131, -181, -6, -19, -163, -83, 60, 421, 129, -76, 289, 93, 89, -41, 75, 134, 85, -40, 455, -44, -92, 342, -155, 232, 240, 28, 58, 32, 2, 34, -1, 159, -81, 21, 238, 86, -64, 46, 91, 155, 84, 78, -99, 91, 105, 1, 77, 116, -78, 53, 88, -34, -31, 54, 69, 152, 10, -32, -23, 234, 43, 109, 89, 224, -47, -25, 57, -80, 9, 5, 138, -142, 21, -48, 46, 138, -153, 42, 46, 152, -113, -7, 177, -66, -66, -234, -77, -28, 207, -154, -67, 21, -94, 27, 177, 293, -112, -179, 4, -99, -151, -72}
+, {-34, 40, 167, 85, 210, -135, 1, 163, -96, -41, 2, 8, -21, -56, 192, 120, 235, -27, 6, -1, 23, 12, -106, 46, 349, 87, -74, 89, -75, -28, -115, 157, 167, -58, -23, 257, -34, -6, -14, 76, 250, 81, -310, 11, 30, 1, -90, -77, 64, -85, -34, 296, -138, 203, 177, 70, -72, -11, -128, -246, -93, -79, 222, -119, 173, -21, -74, 311, -138, 266, 167, 202, 65, 13, 232, -44, 171, -39, -159, 91, 316, 230, 91, 119, 203, -58, 346, 296, 112, -30, 133, -16, 314, -13, 80, 228, -16, -77, 243, -101, -70, -89, -219, 101, -34, -78, -116, -54, -80, 44, -345, -87, 299, -60, 49, 181, 102, 127, -203, 151, 245, 70, -196, -386, 73, 0, -390, -215, 227, -24, -189, 205, -204, 60, -32, -9, 362, 168, -292, -53, 102, 42, 149, -61, 30, -11, -160, 135, 16, 105, 38, -134, -20, 126, 39, 87, 112, 42, 134, -43, -23, 177, -71, 59, -70, 7, 203, 44, -66, 210, 138, 174, 466, 63, 421, -18, -25, 187, -27, 43, 23, -97, 259, 177, -68, 260, 326, 116, 424, 34, 362, 148, -199, -161, -170, -212, -57, -35, -231, 56, -280, 68, 44, -131, -33, -230, -146, -43, 120, -234, 402, -50, 299, 104, -143, 104, 27, 123, 34, -457, -98, -634, -208, 138, 125, -77, 225, 18, 32, -79, 64, -152, 98, 73, -181, -112, -136, 1, -84, 12, 56, 127, -24, -69, -58, 230, -33, -127, -105, 66, -91, -13, 71, 103, -110, -3, -45, 103, -12, 3, -80, -33, 3, -47, -74, 63, 92, 257, -2, 13, 100, 114, 94, 24, 103, -150, 54, -70, 77, -20, -68, -39, 233, 293, 97, 149, 64, 15, -370, -20, -167, -376, 52, -64, 164, -35, -100, -69, 8, -116, 21, -175, 164, 63, -13, -240, 137, 4, 156, 2, -40, 74, -152, 73, 137, -4, -141, -152, 70, -65, 30, 23, 166, 45, 135, -296, 66, 80, -242, -208, 55, 120, -224, -9, 26, 159, -3, 103, 80, -112, -73, -201, 56, 117, -172, 70, 22, -41, 2, 59, 5, -48, 16, 59, 14, -24, 9, -186, 131, 45, 29, -112, -26, 105, 90, 188, 1, 21, 7, -4, 14, -16, -24, 76, 3, 119, 76, -192, 111, -1, 13, 30, 79, -50, 10, -6, -77, 48, -110, -121, -52, -222, 48, -50, -141, 103, -131, 71, -33, -69, 82, -20, 61, -81, -33, 43, -104, 69, -46, -68, 93, 21, 14, -76, 39, -74, -40, -62, 118, -77, 99, -5, 25, 79, 131, -137, 77, -53, -145, -68, -81, 19, 3, 10, -43, -44, 11, -189, -36, 13, 67, 51, 22, -5, -111, 0, -71, 11, 15, -73, -16, 10, -3, 26, 41, 102, 67, -14, -14, 158, 78, -15, 160, -35, 12, -13, 180, -84, -34, 18, 23, -35, 3, 15, -125, -178, 16, -62, -31, -11, -94, 111, -55, -82, -90, -302, -209, -81, 68, -124, -266, -131, -182, -123, -164, -83, -78, 91, -121, -131, -35, -77, -2, 14, -9, 50, -75, -48, 43, -18, -90, -96, 156, -13, 53, 22, 23, -94, -3, -63, 85, -150, 32, 11, -156, -51, 16, -62, 73, -22, 92, -61, 146, 114, 6, -37, 160, -87, 65, -36, 64, -7, 51, 57, -71, 1, -11, 49, 200, 73, -36, -21, 66, 72, 28, 91, -1, -69, -2, -42, 237, -38, 125, 182, 109, -81, 7, 69, 21, 220, -20, 20, -234, -121, -96, 77}
+, {94, 83, 129, 120, 229, 19, -32, 206, 73, 52, 150, -83, 60, -118, 76, 68, -17, 4, -42, 188, 22, -34, 367, 29, 153, 3, 266, -117, -131, -75, 230, 63, 182, -44, 56, 172, -28, 0, 167, 93, 112, -50, 64, -42, 2, -9, 193, 57, 23, -66, -66, -22, -18, -33, -3, 2, -14, -15, 132, 29, -13, -1, -35, 41, 14, -32, 42, -85, -125, 15, -50, 210, 40, -64, -20, -44, -16, -23, -167, 87, 2, -33, -124, -11, -40, 104, 86, 13, -55, 128, 69, 93, -157, 39, -187, -138, 73, -151, 3, 26, 14, -200, 19, 1, 139, -83, -176, 203, -162, 88, 149, -152, -171, -46, -51, 43, -291, -8, -112, -219, -65, -88, -94, -16, 127, -16, -47, -95, -77, -1, 45, -44, 82, -39, -29, -29, -211, -55, -11, 17, -13, 152, -86, -25, 102, -145, 7, 14, 52, 200, -64, -1, 207, 7, -42, -23, 124, 53, 156, -171, -71, -230, -141, -28, -50, -11, -258, -62, -26, 29, 89, -70, -10, -148, 40, -65, -26, -174, 15, -84, -128, 46, -142, -47, -105, -292, -251, -303, 238, 55, -69, -145, 44, -28, 46, -52, -284, -57, 193, -106, 32, -120, -179, -195, -20, -56, 35, 69, -159, 190, -246, 13, -415, -175, 16, -85, -64, -340, -122, 67, -176, 41, 132, -363, -100, 120, -285, -208, -72, -30, -102, -38, -293, -145, -4, 53, 103, 171, 80, -146, 121, 31, 86, 85, 81, 173, -106, -80, 225, 64, -70, 216, 145, 152, -1, 25, -70, -254, -262, -77, -74, 139, -67, -160, -20, 131, -123, -214, 151, -296, -162, -251, -24, 190, 36, 42, -48, -48, -76, -170, -123, 173, -91, -215, -146, 28, -198, -9, 35, 8, 88, 196, -5, 14, -196, 5, 130, 44, -149, -21, 1, 162, -204, -14, -135, 140, -46, 3, -22, 7, 100, 27, -128, 70, -485, -412, -35, -91, -458, 51, 33, 76, 17, -93, 7, -47, -6, 39, -103, 25, -76, -220, -38, -69, -145, 104, 55, 155, 40, 82, 29, -40, 11, -45, 186, 146, -423, -273, 56, -338, -60, -80, -330, -60, -162, -62, -227, 176, 101, -68, -49, 143, -88, -157, 219, -78, -72, -83, -80, 43, -113, -40, -124, -48, 203, 86, -189, 238, -23, 68, 93, 22, 117, 113, 111, 1, 43, 113, 19, -36, 70, 99, -136, 103, -44, 46, 89, -77, 87, 76, 20, 10, -40, -30, -62, 150, 140, 1, 70, 72, -5, -111, -43, -148, 114, 63, 40, -44, -88, 133, 61, 109, 70, 52, 202, 172, -17, -134, 53, -213, 90, -60, 18, 132, -15, -70, 193, 13, 46, 77, -26, -186, 107, -77, 326, 159, 131, 27, -29, 231, 180, -105, 163, -375, 242, 53, 63, 284, 133, -8, -12, 192, 125, 149, 69, 322, 20, -76, 275, -53, -31, 146, -112, 428, 224, 150, 39, 247, 91, 77, 239, -76, 39, 101, -124, -73, 191, 125, 63, -104, 99, 36, -191, -9, 58, -77, 72, -241, -193, 37, -203, 46, 19, 114, -67, -73, 18, 51, 9, 47, 47, -30, -76, -332, -297, -21, -76, -100, 0, -15, -50, -148, -83, -54, 223, 170, 23, -124, 26, -80, -68, -155, -105, 142, -94, -54, -202, -248, 51, 57, -89, 52, 12, 46, 278, 226, 61, -193, -61, -184, 14, 111, -67, 41, 70, 233, 77, 316, 85, 122, 351, 239, 74, 287, 192, -40, 162, 216, -43, 15, 146, 338, 33, 153, 84, 94}
+, {69, 86, 49, 61, 53, 133, 43, 33, 85, 202, 90, 162, 114, 48, 33, -85, 98, -43, 131, 112, 26, 83, 225, 287, 230, 20, 14, 223, -71, 26, -5, 48, 172, -84, -44, 193, 109, 21, 68, 219, -45, 101, -182, 23, 25, -38, -130, -3, -24, -21, -46, 191, -141, 23, 63, -37, -15, -124, -264, -104, -20, -77, 85, 9, 162, -12, 39, 72, 28, 39, 39, 123, 70, 263, 134, -53, 30, 32, 74, 99, 84, 24, 120, 99, -6, -30, 122, 139, 122, 74, -13, -14, 157, 32, 136, 55, 144, -245, 123, -49, -26, 85, -280, 157, -2, 179, -58, -122, -119, -82, -475, -166, 107, -69, 179, 19, 91, 37, -263, 188, 191, -18, -294, -350, -44, -204, -460, 57, 102, -16, -3, 22, 124, 277, -69, -114, -61, 39, -296, -122, -130, -101, 24, -72, -290, 41, -135, 43, -63, 7, 125, -106, -198, 42, 48, 104, 65, 172, 178, 40, -349, 134, -94, 5, -156, -134, 187, -18, -213, 169, 145, 92, 163, 126, 221, 37, -170, 168, -79, 46, -55, 149, 256, 103, -180, 100, 231, 42, 291, 183, 289, 136, 321, -258, 90, -320, -102, -8, -223, -136, -132, -34, -123, -285, -143, -186, -298, -194, 129, -76, -109, -27, 43, 79, -151, 49, 170, 101, -102, -194, -78, -480, -2, 14, 177, 51, 61, 91, 16, -84, 23, 46, 175, 50, -86, 22, -55, -94, 60, -63, -383, 82, -87, -97, -69, 97, 123, -93, 11, -155, 159, 139, -27, 60, 164, 52, -404, 33, -81, -386, 51, -270, -27, -85, -168, -348, 246, 189, -25, 86, 111, 107, -60, 86, -13, -366, 50, -429, 130, 102, -161, -168, 337, 113, 89, 132, 142, 125, -84, -90, -52, -170, 43, 45, 53, 32, -2, -43, 154, -68, 51, -201, 130, 83, 20, -19, 95, 153, 35, 96, 103, 154, 136, -75, 29, -37, -202, 32, 56, -60, 74, -47, 155, 54, 41, -129, -11, -115, 275, -274, 30, 15, 186, 69, 26, -46, 121, 81, 74, -266, -59, 107, -120, -161, 268, -27, 12, 20, -5, 31, -21, -6, 9, 42, -22, -452, 21, -27, -119, -62, 14, -71, 25, 38, 201, 123, -107, 126, 60, 12, -2, -66, -17, -263, -60, 35, -37, 17, -57, -129, -413, -49, -343, -1, 61, 109, 22, -67, -93, 24, 55, -22, -1, -63, -75, 170, -52, 25, -19, -147, -109, 115, -45, -160, -121, -129, -46, -59, 175, -187, -70, 35, 136, 22, 50, 29, 49, 39, 96, -150, 119, -162, -56, -211, 19, -173, -42, 31, 81, 91, 44, -13, -144, 104, -33, 39, -105, 86, -31, -215, 70, 177, -39, -60, -56, 2, 52, 16, 21, 79, 16, -28, -233, -122, -70, -169, -9, 36, -31, 50, -75, 29, 43, -49, 32, 140, -73, 59, -87, 19, 34, 16, 24, 197, 4, -78, 69, -15, 8, -101, 39, -14, 23, 8, -25, -88, -241, -20, 197, 14, -167, -92, -125, -76, -124, -123, -179, -127, -86, -203, -103, 93, -138, -35, 105, -23, -56, -13, 46, -27, -40, 18, -33, 77, 120, -70, 22, -272, 23, -71, -70, -34, 88, 30, 48, -7, 0, 14, -281, 163, 74, -9, 9, -198, 9, 51, -254, -174, 7, 15, -31, 111, -13, 116, -146, 5, -35, 50, -136, 37, 55, 157, -124, 122, -46, -43, 65, 30, -15, 27, 36, -2, 149, 141, -50, 54, -11, 276, -19, 212, -7, -62, 121, -29, -88, -213}
+, {57, 167, 234, 20, 294, 45, 91, 269, 64, 224, 159, 84, 170, -74, -119, 132, 226, 15, 86, 99, 83, -28, -67, 47, 41, 96, 78, 20, -7, -37, -107, 87, 201, 47, 97, -73, 15, 115, 59, 248, -20, 19, -18, 37, 23, 57, 99, 143, -88, -3, 26, 122, 68, -177, 170, -75, -43, 40, 235, 9, -84, 40, 267, 27, 27, 4, 14, 26, -51, -45, 118, 17, -4, -70, -21, -25, -49, -64, -16, -40, 131, 5, -37, 14, -132, 36, 86, 92, -76, 141, -1, -98, 51, 15, 134, -75, 78, -103, -113, 205, -81, 21, 87, 180, -75, 163, 71, 88, -83, -192, 49, 57, -65, -17, -169, 63, -55, 31, -58, 131, -385, -117, 35, 93, -83, -49, 18, -28, -49, 34, -25, -93, 84, -91, 54, 43, -248, -43, -34, 4, -69, 33, -29, 21, -75, 6, 50, -4, -57, -179, 22, -2, 69, -147, -80, 25, 59, 167, 27, 43, -46, 13, -17, 2, -3, 22, 130, 35, -16, -14, 52, 97, -10, 73, 124, 13, -147, 10, -58, 70, -90, 31, 71, 24, -27, -89, -63, -50, 103, -77, -84, 51, 128, -469, -84, 135, -155, -113, -64, -14, -67, -184, -223, -1, -251, -48, -53, -21, 12, 19, -191, 25, -183, -24, 32, -65, -10, -42, -15, 33, 74, 65, 54, -97, -23, 64, -165, 14, -25, 138, 171, 112, -15, -15, -8, 92, 233, -79, 103, -33, 11, -33, 12, 26, 10, -254, 73, 13, 186, 96, -10, 37, -6, 55, 143, 11, -177, 131, -12, -35, -89, -150, 63, -219, -70, -215, -10, 122, 125, 132, 114, 31, -215, 46, -404, -59, -87, -116, 9, -15, -180, -286, 136, 52, 14, 3, 261, 77, -106, 157, 242, -281, -166, -219, 145, -123, -37, -479, -208, 91, -72, 137, 234, 4, -335, 102, -29, -409, -197, -77, 0, -174, 46, -356, 38, 38, -96, 320, 237, -31, -73, -48, -43, -156, 86, 234, 27, -162, -46, -141, 161, 169, -103, 174, 213, -47, 68, 42, 62, -92, 77, -322, -47, 89, 303, -497, 21, 105, -170, 139, 6, 34, 10, 2, 65, -374, 61, -78, -246, -114, 28, -306, -151, 5, -140, 61, -80, -25, -236, -81, 8, -330, 111, -228, -327, -86, -26, -295, -161, -7, -201, -6, -463, 28, 28, 289, 159, 34, 7, -60, 99, -275, 239, -130, -124, -199, -54, 82, -20, 221, -93, 291, 88, -310, -15, -120, 46, -212, 129, -235, -111, 99, 133, 372, -24, 156, -286, 215, 7, -451, -53, -326, 58, -410, 52, -331, -120, 158, 193, 116, 163, 83, -37, 79, 51, 32, -14, -66, -14, -151, -20, 76, 70, 163, 108, 80, -2, 43, 12, -10, 68, 64, 93, 162, -79, -3, 45, -86, -122, -205, -35, 18, -214, 24, 101, -235, 136, -31, 21, 96, -236, -135, 138, 149, -239, -380, -202, -227, -149, -1, 206, 208, 98, 27, 382, -81, 99, -114, 158, 90, 43, -136, 226, -75, -57, 384, -156, 540, 221, -26, 234, 35, -76, -11, -34, 100, -22, 1, 364, 4, -85, -39, -233, 274, 88, 99, 105, -48, 33, 40, -218, 238, 14, -2, 85, 11, 8, 23, -256, 40, -145, 111, -163, -84, 29, 118, -66, 143, -37, 4, 98, -142, 2, -41, 66, -11, -163, 30, -76, 34, -95, -57, -91, 248, 14, -71, 70, -127, -22, -237, -21, -70, 41, 81, 100, 90, -114, 167, 164, 313, -34, -290, -75, -264, -77, -99}
+, {99, 96, 210, 160, 32, -36, 222, 46, 16, 236, 128, 117, 31, 42, 112, 3, 151, -81, 98, 193, 32, -51, -47, 179, 126, 11, -74, 172, 21, 38, -140, -140, 23, -27, -39, -176, 33, 31, -63, 85, -231, -58, 86, 192, -7, 81, 94, -32, 35, -32, 41, 108, 140, 63, 140, 5, -18, 124, 125, 10, 29, -11, -49, -38, -80, -12, 2, 9, 45, 31, 85, 88, 78, 62, -103, -71, 116, 33, -124, -9, -54, 107, 65, 8, -123, -93, 14, 84, 14, 136, 180, 15, 46, 55, 62, -20, 153, -108, 82, 178, -97, -36, 102, 115, 205, 31, -20, 72, -46, -12, -90, -212, -171, -43, -155, -167, -9, -159, 32, 11, -74, -78, 15, 105, -150, 36, -12, 102, -108, -68, -174, -252, 136, -3, -14, -79, -228, -45, -64, 76, -48, 81, -157, 105, 98, -14, -14, 8, 21, 68, -3, -110, 80, -41, -277, -2, 58, 233, 57, -49, -150, -38, -85, 76, 4, 133, -28, 43, -34, -9, -78, 100, -80, 95, 106, -53, -91, 46, 112, 160, 67, -24, 51, 109, -5, -182, 128, 104, 93, -21, 46, 93, 170, 31, 42, 135, 137, 10, -93, 39, -16, -51, -185, 28, -2, 3, -116, 61, -88, -49, -150, -201, 8, 77, -153, 90, -82, 41, -227, -137, 124, -124, -211, -12, 152, 55, -179, 130, -19, 78, 76, -10, 37, 122, -90, -26, 281, 63, 128, -10, 35, 27, 109, 123, 126, 24, 35, 123, 117, -73, 78, -34, -75, -206, 84, 48, -57, 184, 224, -126, 221, -151, 121, 126, -24, -248, 217, 139, -116, 138, 218, 162, 142, 9, -27, 37, 50, -67, 82, 68, -47, -43, 291, 157, -109, 49, 189, -5, -24, 175, 72, 76, 53, 46, 183, 79, 212, 48, 110, 60, 45, 154, 234, 73, 34, 77, 191, -89, 106, -63, 57, 87, 400, -167, 62, 82, -205, 47, 104, -179, 141, -237, -28, -84, 76, -35, -199, -29, 116, -149, -5, 67, -148, 97, 154, -299, -113, -123, 40, -358, 23, 109, -234, -131, -182, -146, -55, 100, 8, 108, -115, 160, 66, -122, 74, 42, 165, -31, -123, 11, 139, -96, 12, -50, 40, 83, -359, -38, 176, -404, 147, 118, 14, -9, 68, 11, 86, -130, -264, -485, -193, -344, -153, 66, 129, 23, 242, 11, 97, 72, 247, 51, 168, 75, 189, 22, -41, -118, 124, 159, 212, 13, 47, -115, 85, 37, 92, 143, 62, -20, 78, -176, 21, 74, -33, 60, -27, -76, 84, -156, 143, -105, -22, -201, 47, 11, 8, -178, -146, -112, -40, 79, -71, 101, -120, 101, -104, -15, 45, -13, -69, -27, -127, -19, -53, 66, 120, -2, -95, -247, -223, 126, -200, 187, 22, 27, 53, 174, -165, -45, 239, -210, 143, -298, 39, -255, -330, 128, -157, 148, -327, -94, -53, 6, -4, -150, 40, -6, -51, -248, 35, 71, 35, 32, 205, 1, -102, -107, 129, 164, 36, -62, 79, -71, 12, 184, -135, -57, 208, 89, 54, -169, 41, 41, -83, -93, -12, 105, -167, 71, 18, 31, -194, 62, 51, -21, 57, -144, 21, 162, -450, -107, 89, 40, -59, 87, 53, 3, -320, 106, -183, -74, 6, -83, -30, -24, -186, -203, -146, 5, 63, -101, -12, -37, -412, 62, -266, 162, -274, 60, -71, 143, -281, -121, -289, -249, -38, -171, -61, -376, -208, 99, -251, -56, -16, 72, -276, 12, -300, 69, -109, -120, 38, -193, -151, -186}
+, {133, -54, -87, 42, 103, -88, -33, 46, -180, 52, 98, -221, -46, -135, -31, -1, 142, -62, -2, 284, 25, -1, 108, -109, 162, 56, 246, -195, -32, -80, -10, -23, 198, -79, 78, 342, 110, 107, 326, 76, 343, 41, -43, -3, 23, -94, 90, -23, 252, -28, 4, 215, -6, 294, 108, 69, 228, 44, 29, 15, 127, 22, 77, -39, 184, -61, 11, 196, -116, -22, 117, 226, 163, 150, 160, -53, 50, -60, -111, 64, 135, 33, 164, 261, 154, -8, 254, 168, -133, 41, 222, -36, -17, 67, 79, 258, 58, -98, 51, 25, -55, -67, -203, 107, 2, -18, -76, 28, -98, -168, -104, -80, 258, 42, 166, 189, 67, 55, -69, 2, 348, -19, -93, 30, 207, -97, 60, -152, 166, -26, 28, 122, -10, -79, 40, -39, 222, 83, 217, -15, 49, 38, 36, 19, 58, -90, -42, 201, 23, 146, 22, 31, 197, 26, -47, -13, 39, -139, 1, -45, 6, -26, -120, 129, -185, 73, 39, -110, 32, 155, -78, -69, 28, -77, 102, -51, 145, -7, -44, 73, -209, 118, 36, 29, -58, 251, -43, -101, -12, 2, 9, -106, 138, -91, -3, 59, 193, -108, -173, 26, -28, -95, -194, 16, -74, -23, -126, -69, 151, 41, 6, -1, 10, 14, -86, 53, 251, 74, 128, 37, -78, -16, 119, -13, -48, 98, -248, 30, 0, -50, 5, -40, -10, -147, -217, 40, 63, 132, -22, -16, 161, -9, 172, 78, -51, 173, 81, -4, 18, 136, -281, -231, 153, -134, -164, -129, -259, 229, -105, 3, -253, -141, 6, 28, -123, 94, -200, -35, 115, -5, -41, 67, -149, 207, -111, 62, -15, -130, 92, 58, -7, 142, 34, 110, 177, 276, 87, -78, 87, -183, 32, 75, -156, -140, -77, 42, -89, -61, -5, 35, -59, -31, -38, -154, 22, 51, -147, 163, 35, -6, -264, -52, 261, -18, 30, 67, 118, 100, -43, 17, -39, 202, -36, 56, 90, 36, -46, 26, -93, 151, -83, -337, 272, -225, -197, 45, 5, -14, 97, 127, 44, -80, 51, 144, -76, 220, 31, -173, -63, -194, -193, -14, -211, 184, -26, -84, -105, -166, 217, 41, 35, -168, 6, 185, 52, 49, 129, 25, -53, 57, 20, 52, -32, -83, 120, 125, -62, 208, 216, 238, 138, 249, 123, 44, 92, -72, 74, -120, -77, -171, 90, -45, -199, -90, -116, 25, -30, -31, 14, 18, 8, -196, -129, -70, 4, 112, -108, -68, -189, 118, -27, -193, 9, -311, -77, -90, 87, -381, 33, 92, 104, -1, 19, 148, 36, 86, 68, -153, -125, -315, -164, -47, 33, -49, -64, -14, 23, -191, 53, 17, -100, -157, -80, 37, -66, 7, 31, 41, -115, 131, 16, -34, -71, -127, 152, 49, -20, 3, 222, 214, 51, 232, 281, 172, -117, 35, -177, -46, -131, 48, 161, -123, -89, 48, 176, 139, 261, 95, 178, -86, 80, 1, -9, 16, 22, 95, 137, 255, -117, 153, -26, -73, -10, -91, 63, -99, 271, -298, -176, 158, -77, 53, -4, 67, -68, 12, -36, -45, -239, -23, 20, -357, 174, -482, 33, -42, 225, -80, -67, -41, -26, 43, 42, -4, -266, -58, -15, 48, 66, 30, 138, 2, 122, -147, 30, -120, 208, -414, 34, 62, 24, 50, 38, 156, -76, -277, -110, -89, -76, 8, 7, 6, -91, -201, -34, 21, -138, 259, -42, 103, -142, 127, -118, -161, 53, 65, -180, -49, -195, -313, -230, -126, 24, -66, -58, -71}
+, {-44, -18, 8, 91, 44, -85, 1, 35, 41, 1, -25, -171, -141, -32, 14, -24, 276, -54, 37, 55, 214, 203, 48, 177, 75, 130, 264, 8, 30, -49, 8, 8, 192, -26, -76, 195, 43, 192, 140, 63, 421, -84, 114, 112, 16, -22, 211, 35, 222, -21, 76, 95, -69, 415, 36, -7, 283, -69, 84, -57, -26, -67, 14, -17, 361, 69, -67, 16, -42, 564, -65, 288, 106, -37, 125, 25, 243, -32, -355, -2, 335, 83, 57, 100, 243, -50, 105, 237, 26, 116, 105, 34, 497, 31, 94, 86, 158, -226, -35, -151, -227, -229, -109, 5, -140, 7, 10, -179, -145, 0, -128, -138, 142, -64, 57, -31, 21, 68, -2, 75, 187, -60, -23, -189, 48, 21, -62, -157, 230, -28, 212, -63, 29, 92, -153, 36, 366, 74, 61, -143, -36, -144, -133, -43, 320, -244, -53, 85, -129, 388, -107, -105, 210, 26, -37, -120, -116, -258, -144, -254, 98, -36, 4, 9, -54, 160, -189, -49, 32, 213, 49, -60, 74, -112, -170, -36, 368, 94, 68, 165, -31, -44, 30, 206, 19, 398, -48, -43, 191, -48, 46, -8, 74, 207, -26, -36, -12, -64, -197, 71, 67, -50, -90, -74, 28, 72, -33, 29, 9, -32, 174, -49, 71, 91, -216, -24, 178, -31, 84, 26, -68, -4, -118, -59, 77, -171, 49, 64, 122, 71, -270, -55, 13, -44, -78, -131, -62, -104, -109, 26, 19, -117, 73, -85, -138, 77, -182, -177, 6, -113, -227, -129, -22, -103, -300, 8, -66, -157, -97, -12, -91, 329, 73, 21, -25, 190, -145, -187, 49, -218, -63, -68, 194, 67, 166, 140, 290, 45, 161, 198, -3, 137, 67, 106, 113, 26, 14, 143, -147, 9, -226, -121, -41, -16, 112, -67, -152, -42, 35, -17, 129, -163, -48, -8, -97, -146, -133, 287, 54, 42, 43, 24, -172, 189, -95, -3, 96, -144, -94, 28, 139, 108, 121, 248, 55, -24, 56, -33, 0, 179, -14, -28, 87, -304, -32, -5, -38, 13, 30, -3, -32, -48, 84, 10, -27, -50, -31, -177, -72, -139, -1, 7, -148, -79, -51, -23, -103, 47, 147, 78, -74, 163, 52, 68, 184, 46, 70, -9, 118, -29, -58, 214, 9, -56, 103, 155, 39, 142, 218, 121, 227, 128, 284, 115, -19, -201, -209, 146, -2, 26, -72, 246, -46, 227, 19, 9, 15, 54, -85, -10, 51, -464, 138, 328, 19, 181, -43, 343, -127, 315, 17, -62, -22, -217, -111, -169, -10, -199, 87, 76, 38, 15, -132, 110, 171, 24, 2, 54, -9, -66, -6, -153, 33, 100, 5, 42, 25, -63, 92, -47, 28, -33, 83, 77, 218, 194, 57, 116, -50, 172, 1, -142, 48, 2, 89, -70, -82, 63, 61, 185, 35, 142, 52, 217, 93, 11, -92, 100, -158, -85, 184, 12, 98, 118, 169, 239, 102, 310, 171, -16, 87, -371, -27, 58, -219, -100, 128, 25, -93, 121, 40, 7, -364, 50, 141, -282, 114, -183, -152, -56, 120, 228, -25, -123, 105, -185, 78, 22, -173, -50, 46, 40, 8, 17, 63, -52, 84, -62, 45, -91, -206, -46, 18, 89, -280, -81, -26, 89, 0, 223, 40, -5, -101, -144, 7, -150, 100, 16, -52, 113, 121, 149, -9, 119, 41, -56, -270, -64, -188, 111, 69, 56, -104, -42, 113, 156, 77, 289, 97, -10, -10, 104, 219, 14, 104, 285, -58, -79, -55, 31, -132, 53, 107, 133, 100, 103}
+, {129, 181, 56, 74, 60, -62, 26, -29, 124, 70, -87, 134, 71, 31, 134, 66, 72, -207, -21, 201, -112, -61, -206, -36, 227, -10, -204, 9, -109, -37, -19, 70, 91, -81, -50, 475, -21, 203, -83, 58, 160, -61, -287, 52, 111, -36, 13, -227, 133, -62, -30, 320, -88, 250, -119, -152, 160, 44, -111, 75, 17, -29, 55, -2, 261, 3, 10, 153, 26, 397, 234, 218, -57, -60, 21, -14, 149, -61, 52, -63, 196, 17, 10, 241, 70, -69, 247, 68, 72, 93, -66, 109, 231, 45, -41, 3, 52, -151, 13, -30, -137, -204, 121, -125, 195, -151, -165, 87, -18, 97, 106, -139, 87, -29, 32, -68, -106, 0, -244, 52, 91, 86, -106, -257, -25, -56, -205, -133, 91, -158, 115, 45, 96, 72, -208, 172, 79, 74, -126, -339, -38, -10, -557, -98, -10, -47, 30, 56, -22, 153, -6, -66, 70, 7, -124, -80, 165, 3, -42, -35, 33, -5, -54, 19, -23, 199, -16, -59, -66, 364, 156, 129, 208, 71, 73, 7, 173, 193, 0, 114, 15, 4, 176, 217, -43, 192, 65, 107, 238, 187, 285, 205, 50, -36, 9, -190, -106, -8, -145, -82, 137, 91, -113, -236, 29, -141, -40, -32, 320, -90, 14, 212, 55, 103, 91, 105, -17, 64, -120, -294, 46, -177, -264, -209, 110, -141, 14, 21, 177, 155, -110, 137, 21, 100, -118, -131, -186, -283, -273, -60, -1, 24, 65, 63, -60, 44, -82, -74, 140, 54, -116, 12, 80, -36, 13, 16, -102, 82, -79, -71, -70, -38, 59, 11, -74, -37, 68, 111, 148, 42, 25, 115, 236, -125, 80, -12, 301, -181, 238, 261, 9, 50, 47, 157, 136, -15, 63, 133, 127, -34, 43, 56, -5, 63, 74, 118, -14, 80, -106, -17, -51, 53, 15, -232, 31, -224, 24, 1, 34, 39, -105, 99, 106, 49, 21, -89, -28, -212, -238, -164, 191, -24, 159, 101, 98, -10, -87, -25, 115, 48, -74, -128, -97, -395, -162, -16, -3, -70, 175, -24, -21, 26, -9, -96, 65, -36, -32, 15, 125, -60, 71, 16, 37, 55, 14, -32, -20, 5, 182, -73, -29, -18, 64, 8, 78, 63, -52, 76, 100, -80, 59, 110, 91, 77, 29, 174, -57, -158, 101, -45, 132, -27, 93, -7, 189, -33, 25, 2, -104, -53, 30, -24, 155, -23, 66, -57, -48, -24, -106, 132, -9, -196, 166, -52, 32, -1, -127, 31, -118, 6, -96, -201, -90, -429, -169, 59, 170, -75, 32, 147, 26, -59, -120, 113, 274, -48, 102, -189, -116, -131, -224, -80, 80, -65, 137, -81, -90, 24, -110, -171, 84, -77, -65, 70, 161, 85, 23, -72, -55, -364, -28, -58, -187, 62, -72, -205, 39, -53, -99, -56, 75, -271, -3, -320, 155, -192, -49, 4, -32, 21, -363, 135, -25, 56, -181, -296, 174, -101, -89, -153, 49, -151, -102, 12, -286, -55, -86, -143, 57, 94, 77, -72, -411, -145, 99, -89, 66, -106, -71, -129, 80, 19, 7, -11, 0, -72, 57, -1, -414, 14, 33, 99, -4, 42, 142, 65, 4, -251, 38, 31, -64, -158, 86, 4, 27, 12, 45, 124, -5, 92, -104, -20, -80, -171, 17, -29, 83, -111, -126, 22, 103, 82, 8, 135, -428, 25, -112, -69, -9, 65, 60, 23, -146, -120, -61, 35, -23, -52, -122, -124, -132, 130, -196, 101, -190, -97, 31, -7, -149, 174, -112, -53, -139, 53, -224, 33}
+, {15, 23, -45, 11, -28, -17, -41, -12, -52, 1, 38, -46, -9, 8, 6, 8, 41, 15, 23, -10, -50, -30, -10, -18, -3, -43, 42, 27, 16, -70, -4, 27, -25, -69, -14, 43, -10, -74, -31, -36, 5, -5, 28, -6, -72, -31, 24, 2, 4, 25, 12, -28, -15, -34, 2, -7, 11, -32, -11, 6, -22, -74, 5, -5, 1, -5, -39, -20, 3, -37, 32, -7, 1, -10, 41, -38, 10, -56, -51, -35, -43, -28, 45, -8, 18, -51, 5, -27, 38, -52, -17, 32, 34, -12, -38, -9, -10, -70, 35, 6, -48, -5, 37, -31, -23, 2, 35, -14, -42, -42, 15, 5, -37, -5, -17, -23, -45, -38, -54, -44, -32, -21, -8, -20, 7, -13, -41, 3, -8, -51, 23, -2, -21, 7, -58, -3, 1, -12, -32, 4, -36, -53, 20, 30, 12, -29, -30, -30, 29, -40, 19, -59, -56, 14, -47, -49, 4, 25, 39, -21, -36, -14, 18, -43, 32, -31, -19, 29, -32, -46, -12, -13, -19, 1, -42, -56, -40, 2, -49, 22, -32, 13, -7, 16, -50, 8, 7, -29, -50, 28, -39, -50, -14, -20, -45, -4, 31, 3, 35, 33, -15, -60, 41, -39, -32, -57, -28, -4, -5, 2, 32, -2, -18, -49, -61, -34, 24, -38, -48, 34, 19, -2, 9, 5, 5, 17, -14, -37, 26, -29, 11, -13, -47, -42, -46, -26, -42, -3, -56, 18, -39, -6, -27, -20, 2, -26, 3, -32, -28, 36, -8, -38, 2, -36, -19, -45, -50, 17, 7, -58, -32, -59, 33, -35, -1, -50, -19, 10, -57, -18, -52, -32, 21, -8, -58, -22, 14, -58, -20, -54, -70, -38, 37, 25, -20, -43, 0, 25, 31, -35, 4, -55, -13, 5, -16, -18, -33, -48, -22, -15, 13, 11, 34, 34, -33, -38, -19, 7, 37, 13, 29, 12, -26, 5, -30, 4, -31, -16, -47, -19, 10, -21, 28, -22, -1, 8, -57, -19, -27, -29, -25, -67, -16, 10, -28, -16, -23, 5, 21, -12, -40, 26, 18, -2, -53, -54, -4, -57, -55, 3, 27, 15, -45, 19, -47, -60, 5, -39, -26, 3, -19, -22, -53, -35, -9, 24, 20, 31, -26, -13, 4, 19, -5, -27, -54, 26, -47, -12, -24, -26, -43, -25, -23, 22, 39, 0, 21, -6, -51, -45, -41, 37, -34, 12, -58, 1, -36, -40, -36, -39, 19, -38, -5, -34, -47, -19, 13, 25, 41, 13, 10, -30, -32, 11, -38, 24, 36, -60, -63, 27, -6, -35, 6, -28, -46, -22, -48, -33, 5, -39, -57, -16, 22, 41, -50, -38, -30, -13, 11, -24, -52, -22, 2, -64, -49, -42, -14, -39, -31, -7, -40, 17, 22, -56, -35, 10, -12, -14, -49, -27, -27, 29, -21, 26, 3, -14, 7, 1, 33, -24, -42, -23, -18, 12, -52, -37, -51, -22, -47, 20, 36, 7, 3, 29, -13, -41, 3, 15, -29, 1, -37, 21, -47, -23, -35, -29, 21, -7, 11, -11, 0, -43, 10, -35, -52, 45, -44, -25, -4, -33, -21, 12, -14, -15, 14, -27, -31, -32, -43, 40, -49, -2, 0, -27, -46, 2, -45, 42, -29, -30, -7, -12, 30, -41, -14, -34, -10, -2, 27, -15, 6, 6, -13, 35, -44, -63, -25, -8, -18, -66, 11, -34, -54, 38, -23, -43, -56, -56, -31, -24, 32, -11, -23, -52, 13, -46, 10, 37, -30, 18, -7, 18, -41, -35, 12, 10}
+, {48, 73, 99, 57, 264, 109, 210, 192, 123, 0, 130, 279, 148, 151, -3, 220, 73, -44, -46, 65, 46, 20, 199, -72, 102, 89, -16, 158, 74, 68, 59, 28, -10, 62, -82, -139, -124, -32, 42, 48, -95, -110, 100, -30, -10, 33, 75, 126, -232, -67, 110, -195, -48, -181, 100, 80, -10, 4, 88, 102, 20, 36, 40, 33, -36, -66, 34, -292, 68, 69, -278, -2, -155, 50, 200, -12, -77, -17, 140, -39, -285, -196, -84, 36, -75, 46, -37, -91, -37, -180, 146, -65, -182, -58, 89, -143, -76, -52, 126, 86, 45, 12, 84, -114, 119, -50, -104, 163, -29, 32, 105, -46, -186, -64, -183, 30, -31, 15, 108, -83, -314, -27, -66, 6, 35, 97, 167, -64, -241, 53, -312, 7, -84, -124, 121, 17, -690, 76, -50, 39, 102, -31, 129, 85, -247, -1, 54, -55, 110, -528, 74, 82, -37, -66, -1, 20, 16, -10, 86, 49, -292, -88, -48, -73, -21, -288, -74, 86, -12, -184, 5, -26, -387, 42, -104, -3, -55, -233, 39, -147, -6, -60, -287, -84, -42, -229, -363, -52, -267, -41, -300, -216, 151, -167, 290, 143, 69, 47, 145, 101, 69, 60, 20, 39, -41, -15, -64, 43, -6, -305, -80, 184, -33, 15, 122, 35, 139, -11, -29, 38, -24, -52, 72, -147, -86, -63, -60, 66, -64, -32, 123, 99, 64, -56, 39, 42, 249, 115, 35, -187, 54, -139, 36, 144, 53, -45, 103, 29, -224, 79, -168, -6, 116, -56, -72, -30, -58, 61, 35, 27, -41, 100, 73, -19, 61, 7, -173, 19, -23, 85, 104, -119, -47, -218, -91, -1, -14, 88, -134, -100, 20, -324, -253, -392, -156, -280, -115, -41, 387, -35, 348, -59, 71, -109, -296, 186, 207, -53, -8, -58, -224, -107, -16, -139, 264, -16, 225, -118, 28, 71, -304, 43, 500, -76, -79, -37, -106, -86, -26, -108, -88, 51, -89, -289, 17, 183, -15, -78, 96, 39, 38, 72, 51, 111, 83, -35, 69, -77, -74, 65, 27, -318, 73, 105, -61, 41, 78, 9, 131, -44, -21, -89, -12, 55, 78, 0, 1, 25, -45, 74, 29, -2, -30, -162, -304, 30, -47, -17, -107, -267, -124, -130, 61, 105, -259, -76, 42, 88, -181, -109, -116, -124, 72, -228, 128, -11, 171, -84, 158, 41, 164, 133, 68, -54, 145, -156, -91, 22, -43, -80, 22, 181, 220, -318, 25, -113, 83, -295, 314, -236, 79, -79, -134, -69, 138, 42, -401, 196, 20, -61, -337, -109, 115, -77, 50, -215, 55, 27, 56, 81, 51, -60, 88, -30, -152, 15, -9, 85, 88, 51, 59, -5, 76, 32, 126, 101, 0, -97, 13, -180, 8, 139, 108, 44, -167, -4, -62, -20, -150, -335, 238, -309, -6, -78, -10, -252, -22, -177, -41, 125, -321, -90, -12, 86, -289, -392, -60, -151, -194, -261, 132, 367, 186, 33, 509, 82, 151, 260, -3, 185, 169, 22, 482, -44, 58, 553, -187, 404, 235, 201, -4, -152, 81, -164, 74, -96, -15, 3, 355, -35, -47, 108, 103, 144, 54, 84, -119, 29, 50, -25, -10, 191, -72, -90, 286, -74, 13, 22, 27, -35, -9, -12, -1, 47, -32, -5, 128, 113, -41, -177, 89, -245, -46, -55, 38, -228, 68, -69, 125, -31, -202, -4, 21, 103, -102, -365, 32, -272, -208, -123, 15, -40, 241, 41, 166, -19, 92, -89, 215, 137, 27, -232, -325, -252, -107, 103}
+, {38, 101, 79, 53, 222, -72, 201, 21, 109, -85, 55, 137, 87, -52, 2, -11, 62, -125, -16, 182, 29, -155, 91, -65, 155, -26, -95, -33, -136, -90, 156, -124, -188, -160, -141, 34, 131, 91, 43, 77, 67, -61, 55, -119, -86, -195, 197, -179, -17, -61, -18, -43, 35, 49, -4, 172, 52, 95, -62, -113, 9, -40, 97, -56, -17, -74, -128, -17, 19, -16, 90, 42, -17, -99, 14, -89, -43, -11, 88, -76, -122, -58, -32, 114, -12, -91, -51, -154, -5, -49, 85, 43, -168, 62, 174, -47, 92, 38, 323, 164, 92, 30, 93, 225, 178, -3, 8, 176, 4, -7, 12, 52, -71, 33, 231, -116, 207, 50, -199, 95, 75, -65, 161, -39, 5, 40, -138, 67, -60, 68, 155, -419, 94, -62, -95, -202, -116, -198, 147, 84, -38, 79, -20, 39, 178, 0, -39, -27, 51, 157, -41, -58, -29, 42, -123, 119, 97, 138, 94, 62, 13, 8, 63, 180, -66, -17, 103, -132, 17, 145, -99, -169, 21, 66, 108, 22, -107, 136, 68, 20, -77, 130, 69, 31, 11, 27, 5, 84, 181, 154, 12, -35, 18, 19, 18, -16, 141, -6, 205, 111, 77, -9, 106, -30, -155, -38, 6, 121, 123, 93, -157, 47, -3, 61, -6, 99, 30, -69, -61, -36, -50, 18, -24, 38, 95, 119, -237, 94, -315, -91, 87, -144, 221, -48, -215, 64, 150, 64, -31, -186, 153, 91, -139, 126, 31, 18, 60, 156, 356, 137, 187, 138, 104, -25, 204, -182, 55, 100, -178, -12, -22, -7, 34, 39, 4, -138, 193, 107, 180, -105, 224, 120, -57, -10, -32, 69, 174, -76, 240, -35, -119, -177, 259, -71, 16, -85, 183, 211, -127, 4, -157, 80, -115, -3, 49, -79, -72, -61, 43, -3, -54, -13, 92, 35, 180, 274, -144, 159, -114, -25, 39, -93, -85, -114, -31, 7, 51, 149, 123, -139, 175, -74, 0, 144, -236, 63, -428, -43, 436, 77, -262, -31, 91, 19, -242, -360, 78, -209, -101, 39, 111, 169, -283, -107, 164, 50, -196, -93, -144, 21, -11, -359, 111, -175, -19, -17, 47, 74, -265, -161, -45, 27, -18, -229, -67, 73, -265, -249, 18, -142, -78, 1, 89, 9, -91, -243, -204, 7, -181, -5, -3, 183, -24, -61, -35, 215, -42, 114, 132, 81, 3, 44, -6, -41, -117, -64, 156, 37, -14, -91, 15, 18, 14, 153, -1, -59, 72, -304, 178, 46, -86, -4, 55, 15, 9, 133, 90, -177, -175, 154, -5, 140, -55, -98, 451, 113, -148, -269, 104, -306, -61, -112, 14, 29, -76, -55, 109, 229, -157, 117, 19, 28, -191, -94, 204, 75, -65, -199, -21, -109, -81, -22, 41, 55, -59, -65, -130, 88, -266, -76, -9, -136, -99, -20, 168, -145, -117, 12, 40, 7, -9, -73, -59, 194, -80, -91, -135, -163, -81, -126, -74, 115, -34, 101, 183, 80, 252, 189, 128, 159, 17, 38, -8, -78, 104, 176, -33, -89, -242, -21, -24, 55, -31, 149, 73, 42, 40, -16, 40, -227, 12, -98, 38, 38, 69, 82, 144, 69, -54, 14, 155, 22, -120, -197, 70, -114, 6, -56, 42, -57, 70, -2, 87, 125, -142, -236, 126, 49, -9, -171, -85, -213, -59, 9, 66, -308, -55, -49, 42, 60, -202, -115, -125, 8, -226, -250, -205, -184, -335, -178, -33, -24, 24, -127, -37, 24, 45, -187, -12, -29, 28, 34, -82, 31, 110, -14}
+, {69, -165, -124, 193, 190, 81, 78, 157, 139, 132, -75, -143, -82, -157, -56, 111, -97, -20, 147, 83, 166, 93, -165, 169, 37, -91, 139, -50, -42, -40, -103, -34, 188, 35, 142, -6, -38, 52, -139, 122, 153, 40, 136, -88, 58, -12, -9, -49, 184, -14, 51, 90, 18, -22, 208, -40, 22, 66, 32, -31, -98, 63, -91, -34, 128, 20, 22, 110, -7, 6, 21, -22, 43, 104, 19, 38, 12, -39, -89, -48, 35, 0, 38, 89, -116, 21, 5, 129, 60, 240, 115, -150, 257, 11, 10, -61, -60, -203, -160, -140, -209, -158, -178, 73, 76, 82, -126, -50, -129, -59, -185, -310, -64, 29, -38, -237, -17, 8, -114, 63, -211, -87, 49, 78, 27, -94, -73, 46, 119, -107, -8, -81, 117, 89, 58, -87, -180, -73, 1, 23, -7, 10, 73, 37, 5, -28, -131, 57, -105, -200, 34, 3, 31, -108, -13, 103, 60, 76, 71, -22, -65, -26, -246, 67, -68, 195, 106, 14, -56, -46, -26, -49, -21, -57, 53, 86, -270, -32, -127, 126, -246, 200, 114, -41, -124, -59, 0, -2, 84, -195, -31, -39, -44, -253, -45, 12, 135, -39, -47, -66, 83, -63, -310, -187, -77, -152, -216, -228, -75, -92, 28, -178, 22, -35, -35, 71, -64, -61, -14, 74, -54, -31, -28, 97, 13, 127, -92, -7, 7, 15, 205, 57, -220, 28, 13, 87, 123, 13, 188, 4, -1, 69, 42, -21, 25, -173, 31, 5, 168, -142, -48, 165, 13, 55, 197, 102, -357, 9, -28, -274, 104, -65, -236, -271, -158, -574, 63, 116, -34, -28, 26, -53, -340, -15, -294, -420, -234, -186, -331, 6, -269, -230, 103, 56, 162, 14, 15, -211, -74, 26, 63, -349, -77, -85, 217, -108, -1, -216, 49, 98, -159, -21, 202, 33, -284, 218, 92, -277, -333, -92, 160, -337, -189, -440, 101, 111, -66, 279, 309, 45, 22, 8, -214, -172, -89, 4, -38, -133, -35, -408, 77, 142, -106, 193, 124, -92, 146, 35, 108, -118, 69, -25, -210, -14, 102, -69, 19, -9, -175, 58, -24, -47, 150, 53, 22, -342, -55, 69, -207, -52, -38, -129, -47, -94, -84, -38, -202, -49, -2, -57, 17, -266, 175, -97, -194, -125, 30, -87, -180, 8, -117, 61, -269, 65, 7, 88, 231, 126, 0, -59, -87, -195, 132, -19, -149, 15, -48, 234, -11, 51, 11, 166, 77, -210, 5, 5, -10, -104, -57, -123, -130, 63, 111, 516, -28, -1, -384, 166, 24, -532, -194, -144, -126, -425, 70, -246, -258, 72, 74, 93, -80, 50, 146, -5, -14, 9, 69, 51, 14, -62, 157, 127, -126, 102, -42, 115, -81, 11, 24, 124, -18, 60, -24, -48, 12, -139, 29, -17, -49, -33, -8, 133, -108, 123, 130, -67, 114, -6, 221, 46, 87, -52, -63, 170, -120, -100, -216, -110, -218, 111, 12, -60, -54, -34, 20, -5, 166, -43, 76, -35, -92, -53, 150, -22, 24, -31, -95, 273, 137, -38, 169, -28, -11, -111, 50, 55, 29, 17, 263, -7, -18, -10, -240, 206, 112, -96, 66, -89, 47, 44, -146, -79, 10, 2, 34, -7, -1, 133, 33, 87, -19, 143, -29, -128, 47, 126, -95, 18, 17, 40, 28, -37, 2, -5, 17, -20, -244, 39, -110, 50, 28, 31, -98, -5, 12, 23, 88, 24, -3, -112, 51, -186, 143, 103, -70, -42, -161, 22, 164, 76, 39, 225, -4, 43, -2, 1}
+, {128, -200, -1, 107, -90, -9, 32, -88, -104, 108, 176, 10, -139, -2, -12, 71, -79, -107, -112, 72, -32, -49, 40, -163, -131, -198, 108, -18, -3, -55, 189, 51, 66, 54, -63, 104, -140, -177, 145, -296, -321, 58, 80, -289, 14, 10, -49, 234, -9, 40, 76, -102, -223, -81, -158, 73, 57, 46, 125, 67, 19, 61, 239, -28, -17, -97, -11, -25, -31, -178, 7, 56, 0, 54, 126, 150, 21, 43, 44, -37, -20, -22, 36, -51, -3, 113, -26, -36, 84, -66, -46, -17, -23, -38, 133, -58, 118, -39, -75, -58, -105, 27, 6, -134, 214, 150, 148, -19, 33, -152, -167, 81, -244, -231, -468, 367, -76, 7, 115, -171, -271, 59, -309, -188, 22, -161, -144, -170, -260, -48, -459, 138, -180, -17, 66, 133, -575, 75, -241, -54, 166, -160, -102, -39, -24, 20, 22, 25, 18, -213, 66, 155, -273, 6, 63, 12, 171, -200, -44, 139, -101, -31, 29, -144, 53, -68, -88, 141, 71, -385, -105, -153, -210, -316, -236, 79, -130, -22, 225, 51, 135, 116, -173, -79, 14, -159, -203, -28, -109, -31, -175, 57, 57, 58, -7, 45, -95, -71, -17, -97, 51, 18, -12, 7, -140, -77, 47, 19, -1, -313, -16, -101, -3, 43, -140, 67, -122, 36, -28, -67, -84, -79, -174, -129, -14, 49, 42, 43, 54, 126, 2, -34, -93, -64, 153, 54, -88, -115, 11, -25, 128, -43, -51, 34, -43, -6, 54, -16, -127, -69, 2, -50, 22, 48, -204, -7, 129, -132, -42, -41, 23, 99, 136, -168, 45, 91, -52, -528, 71, -646, -28, -38, 2, -235, -45, 82, -121, 12, 152, 52, 59, -97, -141, -369, -30, -499, -99, -54, 63, 13, -167, -78, -18, -5, -103, -32, 11, 77, -62, -120, 137, 6, -118, -64, 137, 95, -26, -20, 17, -4, -177, 93, -273, 15, -13, -4, -46, -122, -98, 175, -22, 136, 34, -129, 8, -191, 1, 9, -228, -36, -40, 61, -113, 56, -54, 23, 52, -252, -32, 77, -43, -101, 93, -14, 153, 84, -31, -53, -13, -210, 82, -180, -138, -258, -138, -31, -53, 146, -391, 60, 8, -1, 23, -254, 192, -70, -23, -201, -56, 32, -51, -197, -84, 140, -372, -167, -170, 79, -113, -8, 123, 74, -128, -59, 95, -119, -132, 207, -20, 31, 89, 170, -16, 276, -3, 88, 26, -95, 104, 17, 143, -95, 1, 270, -97, 182, -61, 73, 51, 105, -26, -15, 94, -145, -125, -196, 104, -80, -9, 73, -8, 170, 68, 160, 22, 124, -27, -76, -27, -49, 19, -149, 41, -34, 97, -47, 81, 25, -54, 20, 10, -11, -57, -57, 121, 85, -329, -30, 33, 248, -61, -153, 98, -113, -4, -108, -36, 124, 38, -140, 5, 174, -170, -31, 158, 139, 148, 108, 331, -160, 38, 137, 23, 23, -99, 42, -298, 252, -211, 76, 432, -212, 12, 168, -424, -66, 247, 100, 77, 5, -27, 159, -143, 203, 87, -80, 97, -316, -168, -60, -142, 99, 16, -33, 173, -16, 19, 135, -92, 55, 17, -22, 21, -12, 48, -115, 38, 2, -32, -57, -63, -120, 9, 32, 46, -59, 38, 69, 40, 269, 197, -34, 80, 104, 40, 89, -20, 53, 22, -23, -88, -15, 22, 135, 203, 341, 66, 34, 51, -91, 49, 16, 89, 154, 100, 221, -95, 192, -27, 60, 199, 148, 223, 250, 238, 65, 202, 138, 230, -13, 221, 355, 80, 345, 146, 182}
+, {155, 61, 176, 136, 198, 11, 91, 308, 2, 161, 54, -99, 155, -64, -108, 12, 122, 27, 31, 87, 80, -46, -217, 76, 158, -78, 44, 114, -74, -58, -192, 63, 216, -14, 93, -6, -21, 39, -308, 149, 147, -6, -87, -82, 49, 49, 62, -124, 142, 9, 28, 283, 127, 134, 56, -40, -55, 145, 143, -12, 23, 1, 161, 76, 91, 11, -46, 190, 133, 72, 239, 82, -32, 104, -114, -91, -106, -42, 129, -6, 134, 65, 107, 158, -52, -3, 263, 233, 107, 21, 107, -133, 133, -76, -2, 106, -103, -9, -31, -90, -153, -48, 83, 204, -38, 135, -8, 84, 60, -11, 52, 50, 53, -49, -8, -99, 20, -22, -106, 1, 72, -40, 11, 12, -99, -59, 39, 66, 115, -67, 32, 1, 49, 75, 11, 22, 4, -46, 33, 75, -72, -95, 85, -27, -19, 34, -30, 40, 21, 14, 98, -49, 109, -67, -28, 65, -3, 82, 109, 24, -47, -138, -82, 107, -3, 191, 108, 127, -39, -107, -49, -84, 6, -12, 177, -22, -8, -158, -111, -3, -148, 276, -16, -79, -109, 44, 60, -99, 262, -196, 109, -33, 213, -140, 57, 110, -94, -103, 63, 62, 71, -21, -50, -28, -102, -55, -30, -103, 25, -18, -158, 28, -144, -107, 75, -22, 61, -93, -18, 78, 96, 2, 57, -84, 134, -65, -79, 94, -64, 169, 150, -61, 44, 223, -64, 70, 309, -64, 4, -69, -88, 115, 3, -37, -3, -33, 18, 12, 135, 29, -115, 93, 195, 145, 77, -68, -268, 2, -79, -133, 21, -84, -71, -189, -119, -307, -33, 195, -50, 132, 65, -35, -401, -110, -470, -363, -251, -76, -166, 9, -332, -186, 96, 109, 65, 16, 112, -216, -52, 61, 170, -226, -11, -41, 47, -49, -3, -280, -73, 118, 6, 77, 149, 209, -96, 36, 187, -369, -123, 85, -118, -60, 162, -331, -2, 18, -204, 252, 129, -160, 32, -243, -48, -170, 175, 115, 59, -133, -63, -228, 264, 92, -99, 216, 290, -103, 96, 202, -55, -43, 30, -117, 116, 94, 31, -72, 48, 82, -9, 124, 27, 24, 98, 107, 20, -358, -14, 57, -142, -176, 57, -201, 65, -111, -448, 33, -212, -2, -77, -61, 38, -340, 134, -94, -196, -409, -84, -269, -430, -73, -225, -68, -442, -9, 69, 220, 117, -4, 34, 99, 67, -50, -113, -60, 14, -67, 54, 185, 38, 101, -84, 233, 109, -325, -16, -64, 8, -177, -39, -143, 6, 145, -5, 578, 35, 47, -266, 188, 83, -384, -43, -237, -151, -100, 89, -151, -78, 190, 127, 209, 8, 74, 81, 6, 40, -41, 0, -150, 64, -69, 74, 25, 1, 53, 16, 74, -91, 2, -4, 25, -21, 74, 109, 119, -76, -76, 51, -65, -68, -98, -226, -51, -74, 4, 78, -95, 134, -42, 73, 88, -74, -119, 11, -98, -320, -248, -182, -117, -236, 136, 148, 395, 176, -72, 359, 124, 181, -169, 178, 183, 9, -38, 267, 14, -6, 236, -247, 303, 167, 35, 154, 22, 71, 25, -19, 113, 64, -22, 133, -16, -37, 37, -219, 230, 92, 3, 18, -137, 31, 71, 64, -16, 4, 3, 56, 102, -30, -31, 0, 49, -66, 6, -30, -11, 36, -26, -59, 175, -60, 65, 142, 82, 0, 56, 56, 159, -184, 19, 2, -17, 46, 86, -61, 73, -35, 24, 95, 90, -9, -30, -198, -24, 26, -11, -167, -129, -109, 123, -59, 318, 34, 2, 10, -34, -27, -123}
+, {-78, 102, 44, -78, 44, -176, -147, -18, 11, -110, 87, -186, 76, -103, -206, 59, -97, 46, -28, -169, 41, 0, 159, -27, -1, -24, 96, -20, 54, 61, 79, 118, -70, -31, 53, -148, 217, 26, 94, 113, -1, -70, -85, -134, 40, -152, 224, 165, 55, -14, 35, -84, 194, 145, 21, 119, -80, 45, 12, -57, 45, -92, -165, 60, -105, 88, -54, -177, -25, 8, -77, 52, 35, 13, 3, 6, 183, -4, -60, -61, 309, 193, 171, -82, 270, -103, -242, 143, 44, 176, -202, 100, 292, 171, -241, -51, 86, -189, 218, 61, -2, -143, -61, 6, 37, 76, -109, 105, -140, -139, -11, 114, 228, -28, 112, -145, 31, 50, -139, 34, 173, -119, 145, 198, -47, -52, -7, -113, 254, -76, 97, 0, 14, 26, -279, -82, 374, -44, 136, 111, 6, 63, 27, -264, 193, -35, -76, -36, 150, 232, -157, -44, 241, 48, 155, -62, -166, -102, 40, -54, 217, -127, -4, -33, 47, 173, -231, -21, 62, 46, 68, -72, 29, -190, -462, -161, 177, -132, -75, 102, -128, 35, 55, 107, 41, 299, -35, -194, 166, -195, -138, -90, 106, 295, 59, -105, 44, 52, -105, 78, 122, -155, -160, -175, 183, 126, -24, 26, -97, 212, 6, -350, -86, -60, -40, -99, 52, -37, -121, -7, 64, 267, 8, 195, -32, 168, 116, -90, -96, -81, -42, -119, 53, -110, -211, 18, -90, 93, -46, 207, 50, -48, 53, -249, -13, 70, -296, -4, -243, -62, 83, 7, -88, 210, -305, -204, 175, -500, 91, 37, 125, -52, -146, -25, 18, 139, -14, -290, -428, -328, -358, -295, -122, 12, -200, -88, -171, 123, -205, 61, -92, 368, -119, 6, 222, 91, 7, -138, -52, 57, 81, -152, 46, 35, 393, -16, 221, 89, 75, -26, 84, -168, 42, 62, 5, 109, -7, 178, 7, 20, 214, 12, -307, 108, -5, 27, 130, 132, 144, -21, -95, 36, 23, -44, 26, -183, 22, -54, 15, -17, -4, 123, -112, 66, 86, 74, -16, -112, 18, -73, 125, 13, 33, -81, -248, -80, -22, -147, -358, 63, -146, 98, -68, -147, 75, -53, 5, -123, 251, 118, 21, 173, 181, -17, -254, -209, 227, 151, -83, 70, -37, -5, -127, -214, 278, -49, 55, 247, 306, 190, 71, 161, 103, 96, 178, -207, 61, 128, 127, -1, 84, 110, -32, 14, 46, 72, -205, -53, 36, 73, 51, -207, 100, 200, -6, 71, 15, 64, -26, 3, 72, 76, -148, 136, 62, 30, -25, -4, -166, 89, -172, -60, -6, 15, -119, 47, -13, 109, -96, 41, -11, -14, -7, -332, -91, -16, 14, -90, -19, 80, -2, -82, 38, -38, 62, -30, 15, -6, -9, 94, 38, 39, 108, -26, -71, 64, 38, -197, 201, 190, -84, 237, 73, 33, -35, 97, -154, -174, 93, 41, 76, 61, -6, 251, 200, 173, 201, 93, 147, -105, -35, -3, 60, 83, -127, -201, -13, 53, 189, -124, -40, -90, -310, -20, -31, 156, -63, -98, -161, -95, -248, -23, -135, -69, -110, 36, -154, -8, 48, 56, -22, -10, -34, -153, -187, 125, -121, 81, -108, -17, -59, -104, -61, -64, 75, 6, -20, -145, -2, -5, -51, -37, -68, 177, -110, -115, 37, -62, -84, -173, -69, -207, -30, -235, 2, 47, -44, 25, -95, 114, -144, -177, -61, 17, 75, 77, -235, 88, 67, -79, 44, 194, -60, -88, 5, 7, -32, -151, -87, -51, 9, 36, 15, 52, 50, 114}
+, {-16, 79, 36, -25, 33, -110, 54, 217, -156, -136, -42, 66, -8, 39, 25, 65, -46, -50, 76, -105, 27, -25, -30, 14, -209, -92, -311, 164, -33, 125, 185, -212, 157, -67, 22, -183, 72, 90, -298, 82, 171, -125, -72, 231, 10, -48, 229, 24, 51, -42, 44, -65, 75, 243, -130, 278, 172, -51, -4, -105, 1, -15, 21, -106, 192, 6, -9, -255, 79, 268, -221, 152, 0, 22, 214, 9, 293, 52, -226, -20, 235, 226, 241, -39, 65, -185, 31, 61, 124, 177, -211, -23, 166, 16, -145, 66, 4, 253, 364, 47, 132, -26, 117, 187, 95, 23, 60, 136, 152, 89, 53, 254, 42, -8, 415, -308, 56, 8, -162, 40, 273, -134, 227, 91, -134, 48, -148, -46, 97, -107, 223, -199, 193, 44, -544, 84, 188, -82, 210, 27, -195, 46, -336, -159, 169, -134, 71, -34, 191, 296, -391, -5, 150, 23, 87, -66, -145, -61, -230, -125, 333, -104, 36, 68, 23, 220, -103, -8, 66, 244, -169, -213, 28, -27, -450, -212, 342, 60, 66, 196, 49, -60, 41, 106, 33, 176, -108, -39, -61, -111, -67, -30, 35, 140, 145, 45, 219, 17, 96, 200, 106, 67, 6, 71, -14, 27, 184, 294, 84, 51, 134, -27, 61, 3, -17, 42, 75, 32, 101, -194, -37, -283, 29, 147, 54, 66, 44, -9, 60, 112, 37, 10, 102, 109, 20, -34, -72, -136, -129, 178, -95, -8, 37, -47, 27, -13, -54, 134, 54, -23, 239, -127, -191, -85, -89, -41, 135, -72, -56, -46, 3, 169, -183, 57, 99, 27, -94, -220, -182, -302, -353, -43, 78, -8, -43, 311, -88, -12, 139, 27, 58, 136, -304, 26, -101, -40, -153, 46, 17, 17, -58, 279, -169, -47, 294, 12, -188, -58, -42, -14, 67, 45, 58, 51, 127, 23, -96, 235, 72, 8, 74, -40, -17, 181, -10, 24, 155, -17, 116, -103, 73, -27, 68, 137, -73, 67, -86, 34, 394, 3, 128, -18, -82, -104, -17, 8, -99, -156, -79, -72, 47, 77, -90, -107, 58, -188, -135, -6, -45, 71, -45, 28, 167, -187, -55, -9, -7, -89, 220, -8, -68, 175, -96, 179, 88, -283, -21, 109, 84, 54, -10, 64, 75, 6, 128, -2, 43, 20, -3, 165, 58, 7, 99, 6, 8, -42, 47, 164, 128, -69, 130, 190, 103, 102, -24, 64, -135, 133, 40, 134, 26, -453, -116, 240, -52, -24, -42, 18, -106, 109, -43, 78, -125, 23, -27, -136, 62, -86, -11, -47, -83, 199, -97, 29, 357, 167, 9, -65, 34, -96, -65, -117, 40, 66, 20, 30, -20, 55, 6, 22, 24, 19, 31, -130, 43, -141, -120, 43, 26, -129, -3, 38, 18, 18, -30, -105, 29, 145, -21, 64, 51, -25, -202, 51, 134, -360, -38, -72, 39, 220, -301, -141, -9, -50, -11, -11, 82, -92, -84, -114, -214, -133, 26, -190, -58, -36, -26, 149, -79, -47, -126, 59, -48, 17, -21, -127, -122, -198, -208, -21, -170, -20, -37, -63, -104, -86, -84, -104, -7, -123, -43, -232, 77, -162, -68, -6, 17, 95, -104, -64, 252, -64, 25, -130, -4, -176, 27, -125, -20, 113, -83, -18, 16, 72, -5, -66, -4, -81, 45, -15, -158, -162, 98, -94, 115, -137, -190, -4, -71, 226, -11, -69, 72, 160, 51, -29, -49, -96, 44, -34, -73, 70, -35, -68, -208, 56, -85, -74, -14, -137, 4, -32, -175, -45, 39, 72}
+, {136, -98, 311, 41, -26, -107, 103, 23, 42, -14, 178, -48, -55, -39, -211, 225, 82, -38, -75, 245, -109, 8, 123, 46, 85, 159, 66, -201, 34, -18, -140, 257, 98, 22, 36, 86, -5, 31, 350, -81, -82, 157, 28, 110, 59, -3, 65, 104, -23, 32, 140, -40, 86, -184, 83, 147, 49, 164, 299, 8, -16, 67, -6, 1, -162, -66, -42, -132, 33, -138, -75, -64, -90, -3, 163, 182, -52, -5, -68, 37, 27, -111, -106, -60, 32, 220, -183, -70, 142, -198, 19, 93, -213, 81, -78, -120, 94, 127, 33, 260, 110, -33, 278, -115, 247, -172, 151, 98, 86, -50, 291, 248, -308, -63, -358, 146, -77, 46, 166, -202, -412, 64, 24, 120, 58, 58, 329, 8, -216, 26, -71, 67, -125, -81, 121, 102, -349, 22, 354, 233, 34, 78, 241, 120, -79, 38, 51, -36, -37, -143, 67, 112, -57, -73, 162, 106, -90, -108, -101, 79, 23, -120, 87, -23, -13, -95, -169, 90, 83, -106, -50, -59, -226, -95, -364, -34, -69, -157, 130, -172, 51, 78, -137, -117, 49, -233, -211, -184, -135, 25, -261, -58, -128, -60, -88, 207, -217, -146, 163, -38, 58, -165, -158, 246, -31, 201, 279, -32, 55, 84, -196, 106, -134, 33, 139, -99, -110, 7, -4, -28, 40, 214, 90, -234, -134, 184, -64, -81, -72, 69, 37, -27, -193, -149, -88, 179, 150, 102, -125, -25, 102, -92, -38, 30, -58, 43, 26, -25, -189, 81, -273, -160, 199, -115, -252, -158, -4, -302, -56, 240, -93, -11, 153, -71, 11, 197, -300, -318, -134, -536, 68, -96, -190, -173, -124, 42, -137, 95, 132, 112, 20, 187, -40, -181, -40, -147, 91, -23, -7, 193, 129, 42, 170, 37, -204, 132, 239, 22, -254, -65, 82, -7, -135, 147, -148, 198, -85, -39, -111, -128, -41, -131, -151, -71, -155, 21, 113, -31, -118, -14, -147, 125, -104, 12, -67, 261, 21, 14, -391, 66, 14, -6, 218, -132, -92, 18, 48, -220, 31, 162, 111, -361, 84, 65, 113, 88, -7, 12, 23, -144, 47, -112, -264, 14, -28, -172, -20, -147, -134, 14, 21, -305, -59, 55, 134, 32, 65, -105, -156, -10, -14, -399, -29, -85, -196, -182, -163, 139, 12, -112, 78, 13, -100, 51, 58, 52, 62, 37, 213, 87, -66, 140, 96, -15, 63, -69, 10, -77, -88, 1, 117, -192, 127, 31, -7, 138, -115, -13, 41, 70, -121, -6, 73, -6, -99, -175, 21, -80, 44, 71, -25, 7, 39, 111, 19, 72, 57, 67, 56, -35, 6, -5, 59, 4, 187, -108, -5, -39, 51, 29, 12, 20, 19, 26, 67, -31, -126, 105, 26, -15, 169, -45, 169, -195, -162, -54, 17, -96, 17, -90, -133, 62, -82, 115, -68, 57, -9, -62, 234, 56, 17, 173, 33, 76, 94, -37, -303, 71, -144, 9, 328, -19, 38, 150, 61, -6, 3, 199, -16, 118, 169, 91, -28, 126, 19, 149, -37, 120, 71, -14, -20, -55, -32, -88, 7, -124, 0, -29, -168, 5, 34, 124, -24, 31, 109, -83, 22, -130, 65, -12, -149, 49, -16, 33, -35, -98, 0, 43, 40, -37, -42, 56, -15, -77, 44, -20, -13, -53, -6, -18, -50, -58, 42, -9, 204, 57, 68, -19, 155, -36, -39, -25, -44, 42, 92, 70, 69, -48, 0, 76, 49, 28, 187, -49, 145, 73, 66, -29, 38, 16, -125, 78, -74, 205, 49, 136}
+, {147, -100, 0, 15, 1, -20, 192, 25, 116, 96, 116, 166, 36, 78, 223, 0, -110, -153, -128, 139, 95, 28, -11, 149, 136, -195, 218, 23, -93, -38, 83, -80, -6, -17, -76, 85, -26, 26, -126, -23, 9, 68, -296, 24, -56, -17, -184, -178, 9, 10, -54, 207, -137, 134, 71, 182, -28, -8, -229, 32, 11, -36, -27, -61, 312, 43, -21, 297, -23, 242, 372, 338, 75, 166, 10, 79, 109, 38, 88, -25, 249, 67, 67, 301, 148, -149, 258, 204, 64, 282, 179, 50, 328, 43, -89, 253, 152, 22, -132, -57, -24, -62, -113, -98, 62, -44, -206, -105, 8, -29, -78, -95, -99, -87, -159, -222, -54, 8, -260, 35, 13, -67, -90, -111, -57, -148, -244, -105, 113, -100, 87, -13, 156, 78, -207, 119, -264, 21, -115, -503, -64, -273, -606, -110, 4, 36, -95, -32, 6, -43, 67, -88, -241, 193, 43, 128, 224, -75, 171, 66, 46, -61, -82, 80, 46, -36, 149, 56, -62, 144, 145, 229, 189, 79, 293, 108, 36, 38, -16, 94, 109, 228, 188, 90, -25, 161, 294, 263, 447, 96, 398, 27, 27, 17, -190, -96, -16, -97, -112, -91, -61, 73, -7, -87, -24, -25, 7, 99, -164, -174, -150, -196, 81, -71, -72, 119, -3, -33, -143, -87, -162, -103, -53, -88, 146, -375, 177, -103, 147, 89, -259, 81, -64, 56, 28, -310, -298, -453, -201, 0, 40, 85, 90, -86, 112, -186, -48, -62, 202, 58, -80, 196, -60, 63, 65, 174, -119, 102, -62, -103, -218, 5, 25, -143, -54, -13, 19, 220, 86, 159, 46, 86, -3, -53, -150, 52, -63, -31, 106, 133, -287, -63, 110, 267, 188, 335, 137, 35, -157, -42, -151, 92, -10, -69, 98, -23, 100, -282, 73, 8, 43, 70, 11, -7, -61, -14, 4, -177, -20, 13, -130, -209, -98, -5, -146, -63, -32, -55, -58, -45, 17, -97, -138, 82, 36, 119, -45, -22, -25, 67, -10, -3, -14, -97, -1, -102, 80, 76, 100, 51, 32, -300, 105, 6, 124, -56, 131, 129, 39, 52, 102, 86, -16, 47, 10, -122, 78, 3, -179, 20, -23, -353, -91, -81, 89, 104, 54, -17, -183, -116, 80, -260, -30, -89, -201, -139, -118, -201, -80, -107, 2, -39, 21, 56, -73, 78, 67, 129, -53, -10, -58, 40, 133, -107, 5, 75, 69, 131, -31, 20, -135, -10, 21, -183, 89, -5, 10, -5, -284, 60, 76, -131, -19, -103, -97, 77, 16, -67, 38, 128, 50, 42, -35, 62, 95, 96, -61, 9, -113, -24, -94, 20, 98, -25, 17, -88, 176, -24, -116, -99, 160, -120, 11, 77, -71, -55, -15, 22, -29, -101, 79, -43, -9, -87, -150, 83, 98, -123, -200, -150, -191, -232, -227, -82, 53, -155, -4, -130, 48, -6, -218, -266, -95, -56, -1, -140, -72, -16, -84, 52, -111, -137, -71, -38, -239, -82, -59, 25, 124, -77, -2, -47, -293, 9, 23, 3, -58, -93, -249, -157, 203, 34, 20, 54, -20, -37, 28, -16, -174, 76, 24, -46, -5, -73, 72, 37, 14, -139, 13, 38, 196, -100, -24, 53, 60, 53, -28, -32, 8, -3, 87, 7, 73, 77, 43, 31, 99, 13, 47, 23, 3, -65, 28, 15, -20, -121, -128, 19, -134, 102, -84, -90, 67, 283, -18, -10, -24, -112, -31, -101, -22, 17, 104, 67, -24, 70, -36, -87, 49, 235, 13, -38, -115, 104, -128, -27}
+, {-35, 176, 238, -48, 321, 39, -105, 208, -105, 57, 76, 50, 217, 83, 50, 118, 468, -50, 100, -34, 57, -11, -79, 43, 280, 126, -64, 223, 46, -15, -14, -149, 268, -232, -51, 119, 108, 201, -21, 115, 424, 165, -132, -109, -59, -162, 179, -148, 180, -11, -64, 244, -87, 211, 57, 22, 222, 16, -239, -159, -21, -91, -72, -30, 365, -9, -25, 138, -118, 213, 49, 63, 31, 180, 86, -154, 112, -73, 11, -66, 126, 185, -9, 57, 54, 89, 226, 240, 7, 94, 231, -134, 155, 16, 99, 120, 185, 75, 250, -8, 22, -51, 38, 107, -187, 199, 194, 157, 84, 45, 78, 213, 236, -41, 197, 134, 21, 45, -247, 167, 455, 33, 69, -198, -186, -78, -140, -128, 240, -273, 40, -17, -37, 261, -396, 66, 463, -40, 21, -206, -169, -159, -279, -520, 162, -118, 2, 136, 158, 219, -378, -72, 346, 34, -272, -253, 59, -109, -149, -298, -77, 1, -78, 153, -101, 59, -203, -169, -4, 207, -295, -68, 129, -124, 36, -215, 5, 2, -123, 25, -309, 93, 15, 193, -92, 88, -120, -88, 361, 18, 79, -61, 286, 124, 144, 10, 43, 11, -152, 126, -1, -16, -79, 46, -6, 38, -140, -23, 90, 10, 125, -126, 50, -1, -229, -70, 329, -106, 21, -429, -7, -183, -348, -52, 117, -191, 2, -13, -6, 76, -48, -162, 142, 38, -372, -327, 168, -132, -197, -149, 46, -17, -21, 40, 1, 68, -60, -6, 49, 191, -175, -207, 137, -51, -363, -82, 15, 128, -9, -40, -105, -112, -142, 120, -14, 34, -133, -31, 85, 19, -88, -38, -60, 150, -5, -84, 93, -131, 114, -120, -108, -169, -112, 94, 119, 131, 193, 193, -170, 59, -11, -191, 29, 49, 221, 43, -190, -29, 41, -339, 48, -184, -19, -95, 129, -143, 159, 112, 32, 111, 126, -24, 125, 2, -18, -87, -93, -231, 44, -3, 3, -4, -67, -12, 115, 148, -10, 132, 2, 113, 0, -58, -114, -141, 26, 14, 58, 139, 41, 22, 62, -111, 115, 78, 117, 91, 107, -62, -115, -14, 92, 33, -78, 10, -35, -39, -129, -84, 124, 54, 60, -56, -78, 17, -8, -127, -48, 16, 1, 35, 40, 44, 39, -61, -3, -36, 92, 107, 2, -154, 14, -3, -130, -89, 25, 125, 75, 94, 59, -52, 245, -10, -153, -8, 77, 129, -68, 172, 116, 155, 107, 7, -127, 124, -77, 67, 164, -3, 0, -2, -38, 77, -5, 79, -26, 6, -37, 35, 1, 179, -85, 61, 40, 70, 255, 100, -50, -2, 69, 61, -37, 23, 81, -27, -93, -47, 186, -3, -10, 44, -3, -155, 46, 102, 104, 3, 59, 124, -133, -84, 121, 16, 66, 19, 54, 163, 36, -163, 69, 116, 102, 109, 27, 31, 197, -126, 62, 16, -122, 86, -82, 8, -66, 115, -26, -13, 163, -136, -5, -28, -139, 40, -24, -62, -40, -39, -55, -37, 76, -41, -78, 30, -91, 120, 39, 68, 27, -207, -28, 32, 64, 99, -48, 129, -62, 2, -50, 2, 21, 28, -36, -173, 136, -168, 56, 52, 121, 31, -106, -25, 283, -5, 8, -35, 40, -23, -32, -198, 97, -123, 19, -99, -23, 54, -99, -156, -36, -42, -11, 78, 1, 63, 28, -158, 61, 113, -129, -159, 111, 133, 80, -296, 69, 305, 87, 70, 20, 133, 21, 183, -47, 8, 33, 136, -28, -63, 70, 33, -66, 13, -78, 16, -81, 24, -94, 159}
+, {150, -226, 8, 88, -27, -109, 80, 39, 152, 108, 39, 80, -108, -120, -1, 57, 34, -88, 29, 72, -59, -48, 113, 76, 147, -28, -153, 0, -38, -95, 1, -156, -25, 0, 69, -7, 126, 51, -220, 224, -55, -20, 93, 88, 3, 47, 43, -122, -145, 33, 38, -97, 37, -174, 9, -35, -236, 41, 171, 36, -18, 43, -13, 65, -159, 57, -45, 87, -63, -205, 40, 20, -221, 151, 13, 51, -168, -29, 156, 84, -120, 26, -49, 85, 15, -21, 197, 96, 50, -37, 146, 100, -118, 43, 130, 18, -10, 68, 105, 305, -120, -134, -39, 11, 157, -121, -201, 99, 71, -66, -144, -216, -155, 29, -119, -193, 78, 65, -87, -94, -311, 50, -18, 110, 54, 148, 25, 27, -224, 66, -11, -55, 102, -55, 75, 4, -505, 66, -28, -43, -73, 150, -15, 81, -244, 55, 62, -56, 137, -409, 91, 67, -348, -49, 107, 207, -195, 139, 80, 219, -319, 130, 57, 26, 53, -499, 182, -12, -86, -302, -112, 105, -201, 150, 102, 168, -357, -2, -89, -93, -213, -3, 10, -113, -86, -223, -14, 83, 30, 31, 128, 95, 91, -140, 118, 67, -124, -74, -25, -34, -88, -46, -42, -95, -77, -116, -195, 109, 18, -137, 50, 32, 30, 47, 82, 124, 96, -31, -22, -73, -195, -8, 69, -138, -12, 4, -123, 43, -110, 141, 25, 93, 86, -26, 56, 11, 92, 66, -62, -155, -16, -66, 50, -101, 75, -141, 71, 12, -110, -98, 0, 248, 32, 59, -12, 221, -69, 143, -102, 10, -59, -130, 127, 30, -5, -218, -117, 108, 64, 33, 226, 23, -367, -148, -320, -155, -172, 77, 30, -2, -76, -291, 292, 268, 110, 226, 319, -89, 57, 90, 97, 48, -25, 0, -68, -71, 137, -188, -45, -4, -129, 70, -24, 112, -1, 195, 160, -282, 42, 21, -93, -58, 35, -168, 18, 22, -151, 178, 30, -18, 13, -47, 56, -245, 15, 8, -26, -98, 104, -52, -50, 26, 59, 116, 51, 13, 1, -45, 61, 3, -10, -30, -103, 10, 88, 50, 108, 142, 16, 150, 55, -13, 7, 48, 25, -50, 4, -102, 4, -29, 65, -196, 66, 60, -28, 121, -20, -20, -348, -78, 11, -376, -9, 131, -260, -198, -87, -241, -44, -56, 7, -101, -75, -65, 50, 109, 105, -100, 80, 5, -44, -52, 110, -106, -58, 57, 96, 103, -175, 5, -117, 176, 130, -307, -72, -135, 93, -135, 64, -78, 15, 95, 124, 95, 19, 3, -124, 87, -83, 80, -139, -18, 118, 6, 18, 1, 25, -24, 123, 99, 52, 79, -34, -209, 58, 85, 21, 0, 70, 46, 152, 96, -35, -39, -77, -1, -90, 6, 47, -226, -65, 28, 65, 36, -276, 46, 3, -53, 48, -194, 62, -71, -168, -183, 213, -128, 174, -159, 98, 126, -348, -133, -13, 32, -405, -435, -271, -293, -352, -7, 0, 121, 91, -110, 602, 157, 28, 0, -27, 90, 12, -84, 218, -184, -16, 431, -35, 387, 128, -41, 183, -2, 118, 132, 132, 75, -23, -7, -2, -119, -44, 83, 5, 328, 204, -27, 96, -74, -10, 120, 96, 108, -125, -51, 180, -53, -83, 24, -14, -86, 83, -2, -89, 25, -138, 34, 73, 204, -129, -205, 173, -157, -132, -208, 38, -231, 39, 96, 40, 88, -216, 6, 12, 296, -69, -327, -34, -234, -176, -225, 405, -191, 230, 183, 246, -11, -79, 137, 87, 213, 129, -144, -205, -83, 64, 29}
+, {-56, 64, 73, 96, -75, -49, 131, 31, 131, 2, 58, 26, -34, 27, -123, 28, 30, 58, 15, 80, 51, -16, 94, 130, 12, -123, -72, 121, -36, 87, -38, -283, -265, 62, 26, -360, 34, -83, -294, 118, -64, -194, -88, 166, -5, 11, 124, 18, -165, -5, 74, -266, 76, -124, -105, -7, -180, -97, 115, -45, -81, 14, 239, 97, -82, 29, 38, -171, 81, -148, -40, -149, -9, -40, 179, 51, 13, -84, -21, 241, -122, 108, 34, 25, -90, -63, 75, 28, 14, 73, 81, 46, -200, -59, 4, 23, -122, 5, 314, 110, 186, -28, 179, 137, 113, 48, -135, 111, -108, 14, 77, 16, -9, -16, 89, -69, 134, 52, -20, 10, 12, 76, 111, 177, 83, 3, 53, 53, 143, 19, 265, 24, 36, 77, 19, -125, 24, -14, 79, 128, 13, 33, 49, 33, -107, 17, -33, -208, 27, -111, -17, 70, -56, 8, 253, 66, 24, 167, 198, 29, 1, -69, 37, -80, 146, -237, -47, 67, -12, -3, 108, 84, -98, 95, 111, -50, 105, 36, 144, 61, 75, -359, -91, -8, 22, 149, 221, 82, 170, 31, 199, 34, -144, 204, 170, 41, 125, 24, 226, 101, -79, -42, 56, -50, 4, -122, -42, 120, 197, 20, -135, 136, -142, -10, 156, -26, 0, 11, -16, 3, 144, -51, 39, 73, 153, -223, -169, 153, -98, -182, 53, -45, 282, 168, -166, -71, -40, -76, 45, -196, 30, -408, -330, 26, -100, 120, -78, 68, 310, -8, 109, 32, 10, -118, 47, -223, 111, -72, -107, -47, 66, -126, -134, 7, -62, -107, 112, -150, -70, -42, 226, -62, 190, -129, -46, -88, 131, -97, 13, 165, -3, 97, 68, -353, -41, -316, -4, 181, -13, -12, 37, -39, 5, 7, 96, 189, -78, 118, 50, -39, -27, -63, -23, -74, 46, -275, -42, 121, -93, 32, 111, -76, 150, 27, 17, 25, -13, -23, 38, -303, 177, -85, -190, 230, -264, 118, -518, -205, 222, -169, -431, -196, 104, -91, -263, -397, -33, 7, -184, -52, -73, 93, -231, -219, 62, 38, -389, -136, -62, -33, -379, -421, -17, 40, -72, -26, -29, 109, -413, -57, 6, -18, -69, -291, -44, 134, -95, -340, -46, -245, 20, 44, 38, 0, -5, -24, 66, 193, -30, -193, -16, 12, -108, 3, 27, -174, 101, 107, 22, -99, -93, 206, -25, 53, 13, -104, 13, -225, -15, 85, 95, 18, -102, 125, 21, 56, -222, -38, 238, 15, -125, -128, 195, -38, -127, -61, -120, 58, 95, -277, 66, 80, -229, -121, 104, 152, -464, -269, 90, -150, -202, -42, -27, 79, -19, 48, -15, 53, 140, -33, -53, 89, -139, -40, 148, 96, -5, 111, -18, 23, -67, 44, 62, 18, 115, 97, -67, 41, -100, -81, -45, -48, -24, 20, 138, 148, -7, 12, -69, 39, 69, 153, -4, 233, 153, 63, 2, -24, -3, -49, 56, 64, 7, 24, 48, -43, 23, 121, -104, 115, 110, -31, 171, -41, 27, 194, 167, -180, 111, 93, -19, 45, 59, -30, 45, 13, -103, -181, -16, -320, -34, 1, -34, 52, 74, 137, 121, 194, 39, 52, 66, 51, 69, -49, -47, -116, 57, -7, -114, 47, 88, -6, 162, 5, 18, 80, -8, -1, -39, 33, 20, 6, -10, 59, -34, 49, 151, -86, 38, -108, 79, 11, -28, -73, -108, -79, 115, -96, -112, 139, -45, 102, 127, 46, 3, -154, 16, 137, 75, -143, 86, 155, -100, -162, 2, 27}
+, {114, -42, 15, 28, -61, -103, 232, -70, 97, 76, -12, 234, -81, 167, 93, 106, -103, -5, -14, 96, -5, 141, 47, 212, -118, 6, 160, -58, 46, -162, 126, -7, 220, 38, -52, 428, 13, 149, 181, -10, 67, -26, -97, -96, 19, 2, 145, 56, 153, -3, 32, 387, -64, 150, 223, 95, 106, 200, -205, -60, 61, 23, 34, 70, 92, 32, 56, -35, 32, -68, 251, -60, -32, 10, 110, -2, -136, -36, -11, 102, 68, -60, 3, 94, 140, 56, 228, 139, -5, -93, 43, 31, -24, 31, 93, -135, 180, 58, 185, -94, -30, -121, -8, -27, 115, -199, 10, 26, -76, 170, -87, -63, 164, 63, 198, -66, 190, 40, 105, 234, 98, 6, 176, -127, -20, 35, -343, -24, 57, 91, 97, -59, -77, 78, 74, -125, 104, 26, -218, 80, -15, 249, -4, -33, -54, 12, -74, 11, -75, -169, -17, 68, -66, -16, -17, 5, -108, 62, 4, 7, -70, 13, 27, 81, 43, -120, -19, 173, 35, -2, 108, -3, 100, -4, -48, 10, 147, -36, 41, 45, 3, -48, 85, -1, 15, -73, -51, 92, -31, 67, -69, -50, -208, 140, 86, -64, 204, -55, -126, 220, -79, 103, -38, -123, -20, -3, -54, 287, 112, 116, 2, -71, 49, 52, -51, 52, 172, -1, 83, 55, -149, -107, 4, 196, 190, 93, 130, 89, -31, -257, 85, -9, 163, -111, -30, 73, -320, -19, -69, 46, 63, 33, 18, -138, -136, -77, 32, 77, -80, -50, 140, 26, 50, -45, 121, 78, -34, 213, -117, -4, -65, -23, -69, 23, -92, 84, -62, -30, 64, 8, -32, -5, 245, -33, 61, 64, 145, 73, 171, 84, 81, 164, 29, 9, 151, -77, 77, 90, 98, -246, 129, 136, -11, 105, 139, 192, 88, 207, 52, 56, -259, 189, -66, -82, 146, -299, -116, 151, 45, 42, -399, -20, 373, 9, 111, -7, -94, -78, -140, -187, 169, -204, 160, 168, 61, -48, -341, -55, 363, -23, -7, -248, -247, -415, -384, -82, -8, -109, 65, -67, 20, 57, -204, -84, -199, 127, 16, -1, 106, -128, -179, 26, 33, 120, -11, -71, -25, 31, 5, 85, 43, -39, -7, 96, -88, 136, -13, 67, 86, -140, 93, 126, 235, -1, 25, -109, 103, -3, -160, -7, -40, -108, -109, 124, 18, 31, 32, -51, 18, -230, -94, 64, 33, -57, -105, 141, -25, 66, -15, -174, 62, -285, -263, -195, -33, -28, -261, 42, -86, 53, -93, -107, -117, -204, -208, -267, 144, -428, 78, 119, 54, 24, -218, -17, 32, 103, 13, -504, -266, -624, -408, -106, -86, -14, 50, -149, -94, 89, -216, -14, -189, 43, -145, 85, 32, 64, -308, -33, 78, -357, 10, 60, -98, -93, -38, -1, 94, 8, -133, -50, -16, -381, -137, -37, 126, -284, -51, 70, -26, 70, -229, 52, 21, -32, -195, -65, -34, -189, -113, -181, 96, -288, -28, -74, -50, 78, -153, -9, 107, 98, 25, -145, -16, -68, -165, -39, 18, -391, 17, -48, 186, 39, -36, -3, 98, -16, 1, -134, -284, -145, -70, -33, -17, -192, 1, -54, 48, 31, -86, -11, -104, -102, 82, 1, -297, -51, -30, 56, -48, -10, 71, 7, 33, -57, 72, -45, 20, -33, -6, -21, -31, 90, 23, 114, -67, -302, 120, 153, -69, 270, 3, -35, 0, 46, -65, -60, 143, -21, 23, -96, -149, 9, -47, 55, -56, 77, -76, -30, 67, -194, -133, -118, -81, 16, 50, -196}
+, {-51, -105, -4, -19, 42, -126, -74, 89, -138, -51, -76, -117, -96, -156, -50, -20, -164, -3, -21, -70, -5, -37, -1, 60, -51, -96, 60, -36, -18, 32, -157, -57, -12, -48, 48, -197, 108, -3, 54, 6, 86, -111, 151, 138, -3, 33, -1, -29, 71, -38, 31, -182, 196, 60, -150, 195, -33, -21, -4, -83, -1, -55, -66, 60, 105, -117, -66, 79, -32, 93, -29, 279, 147, -75, 139, -59, 250, 12, -18, -69, 133, 79, -48, -69, -2, -176, 2, 0, 52, 34, 0, 0, -16, 14, -73, 94, 12, -18, 182, -44, 70, -114, 123, -78, 61, 10, -34, 63, -44, -145, 6, 52, -95, -16, 158, -82, 115, 108, -110, 0, 92, 18, 63, -6, -61, -60, 83, 57, 169, -62, 262, -198, 207, 49, -83, -93, 265, -102, 164, 85, -5, -4, -25, 63, 273, -48, 88, 73, 94, 300, -104, 83, 175, -75, 62, -106, -15, -14, -39, -45, 36, -30, -17, 109, -121, 105, -86, -136, 7, 114, -293, -156, 111, 20, -210, -120, 170, -77, -137, 85, -190, 66, -9, 114, -27, 250, -30, -136, 125, -130, -83, -128, 178, 17, 102, -45, 2, -67, 187, -80, 72, -50, -136, 28, -11, 20, 87, 58, -68, 174, -242, -31, -192, 1, 15, -158, -223, -6, -54, 40, 42, 55, 108, 75, 92, -64, -197, 132, -106, -23, 73, -40, 111, 37, -154, -40, 54, 58, 39, -183, 87, -140, -23, 12, -21, 267, -49, 84, 235, 127, 163, 35, 73, -104, 23, -153, 125, -283, -33, -13, 72, -12, -53, -24, -46, 87, -105, -344, -255, -491, -114, -69, -328, 81, -227, -55, -318, -12, -130, 40, -39, 235, -84, 54, 23, 39, 41, -254, 149, 179, 104, 107, -227, -109, 167, -74, 84, -141, -61, 61, 98, 107, 101, 100, 55, 72, -209, 209, -138, -137, 166, -166, -272, 45, -99, 95, 215, 146, 118, -54, -13, -11, -22, -96, -63, -14, -137, -86, -10, -15, -233, -175, 109, -26, -100, -119, 49, -127, -160, -34, 70, 190, -47, -144, 123, 176, -302, -387, -79, -55, -220, -160, 30, 5, 68, -67, -64, -146, 152, -70, 36, 137, 9, 86, -24, -36, -73, 77, -112, 261, -122, 24, -167, -189, 434, 115, -121, 469, 188, 399, 23, 356, 313, 134, 3, -126, 135, 67, 82, -38, 158, 20, -24, 16, -130, 46, -13, 58, 149, 56, -86, 128, -123, 150, -160, -3, 139, -119, -140, 69, -86, -23, 168, 128, 108, 2, 87, 85, -116, 90, -39, 124, 18, -7, 71, 123, -56, 6, 145, 4, -20, 25, 9, -124, -74, -9, 56, -49, -38, 103, -54, -13, -63, -102, 171, 5, -47, -150, -216, 284, 88, -47, 8, -264, 297, 104, -56, 109, -55, 269, -86, 157, 98, 116, -267, 371, -216, -89, -82, 35, 367, -126, -186, 282, 306, 280, 331, 287, 339, 129, -213, -94, -39, -57, -64, 76, -63, 24, -119, 4, -31, 87, 67, -22, -122, 32, 201, -109, -54, 82, 37, 118, -18, 19, -7, 6, -77, -52, 95, -73, -34, -138, 44, -365, 1, 114, 137, 99, 36, 57, 227, 58, 57, -79, 15, -4, -33, -185, 1, -18, 65, -36, 18, 45, -54, -60, 135, -107, 115, 48, -272, -18, 46, 23, 53, 10, -89, -335, -21, -83, 95, -199, -15, -251, 57, 208, -119, 258, 144, 234, -19, 31, -59, -221, -104, 25, -72, -144, -247, -22, 2, 98, 32, 63, -167, 55}
+, {2, 73, 126, 44, 85, -17, 24, -5, 10, -1, 200, -164, 38, -116, -5, 157, -24, -25, -251, 48, -9, -80, -25, -173, 76, 0, 28, -119, -4, -43, 26, 177, -148, 0, 27, 234, -15, -51, 187, -116, -148, -186, -53, -43, 40, 10, -31, 77, -76, 38, 18, -68, -73, -97, 197, -6, 86, -11, -71, 82, 0, 8, 50, -36, -146, 59, 43, -73, -123, -399, 6, -47, 2, -90, -137, 69, -62, 38, -119, 129, -103, -15, -146, 139, 166, 69, -113, 148, 22, -82, 61, 73, 16, 35, -32, 5, 12, 57, -88, 35, 16, 61, -109, -29, -3, -71, -3, -4, 101, 174, 22, 37, -126, 12, -47, 160, -87, 48, 54, -3, 127, 127, -57, 90, 95, -27, 99, -128, 36, -31, 50, 193, -59, 2, 15, 64, -61, 88, 58, -29, -36, 194, -93, 48, -30, 31, 22, -15, 7, -279, 52, 60, -85, -53, 109, 33, -129, -16, -76, 47, -9, 86, -36, -156, -47, -267, 13, 9, 37, -291, 39, 126, 18, 86, -10, -63, 123, 71, 13, -162, 292, -13, 2, -91, -30, 88, -91, 109, -225, 136, -44, 150, -103, -3, -106, -86, 102, 60, 74, -20, 7, 219, 128, -43, -20, -40, 67, 218, 83, -47, 106, 8, 223, -108, -8, 23, -57, -153, 96, -42, -212, -21, -62, 211, -35, 10, 63, -12, 0, -4, -182, -125, 43, -228, 17, -57, -196, -92, -33, 28, -10, -107, 3, -268, -80, 123, -116, -290, -117, -95, 3, 66, -65, -23, 2, -2, -12, 57, -23, 23, -75, -59, 171, -16, -16, 183, -157, -41, 313, -127, 8, 14, 179, 90, -127, 48, -51, 87, 146, 131, 34, 247, -68, 40, 86, -9, -29, -6, -26, 128, -38, 245, -103, -184, -195, -137, 9, -272, -56, 155, 29, 325, 1, -11, -382, 155, -447, -224, -231, -88, -343, -316, -229, -64, -96, 43, 248, -20, -51, 56, -73, 154, 38, 107, -49, -45, 125, -104, -584, 87, -85, -470, 46, -294, -324, 58, -52, 54, 81, -18, -51, -281, 1, 33, -120, 122, -27, -98, -45, -283, -144, 76, -58, -121, -14, 44, 25, -36, 193, 77, -70, -140, -22, 23, 276, -43, 102, -52, -89, 123, -71, 70, 6, -113, 131, 274, -132, 225, 145, 57, 136, 23, 189, 155, 90, -141, -93, 18, 10, 95, 25, -6, -8, 190, -173, -144, 52, -238, 13, -128, 15, -287, -84, 133, -13, 94, -99, 134, -185, 164, -77, -574, 61, -812, -259, -167, 26, -627, 20, -58, -20, -24, 61, 146, -61, 8, -170, -181, -44, -276, -42, -276, 17, 101, 29, -75, -136, -189, 92, -1, -84, -180, 6, 16, 12, 91, -122, 22, -23, 162, 97, -159, 71, 76, 31, -23, 65, -33, 118, 54, -40, 25, 72, 81, -21, 168, 62, -25, 246, -105, 113, 142, -1, 80, 154, 164, 181, 260, 108, -30, 136, -219, -99, -35, -47, -89, 122, 187, 72, 65, 44, 16, -254, -112, -73, -14, 81, -370, -56, -83, 6, 44, -43, -72, 184, -180, -16, 48, -437, 29, 47, 26, -39, -284, 49, -216, 99, -141, 37, -66, -479, -217, 71, 41, -110, 53, 57, 141, -134, 19, 89, -1, 101, -209, -31, -31, -15, -343, 26, 25, 173, 80, -16, 100, -84, 304, 35, 1, -12, 73, 16, -89, 116, -180, -4, 24, -72, 69, 32, 40, 166, 79, -126, 87, -3, -58, 69, -24, -29, -143, -82, 70, -86, 190, 92, 149}
+, {79, -73, 4, 97, -108, -45, 118, 98, -151, 62, -33, 89, 2, 96, 114, 73, 206, 35, -19, 142, 101, 23, -132, 0, 138, 43, 42, 63, 37, 57, -36, 60, 161, 41, -106, -18, 35, 68, 172, 54, -2, -61, 12, -13, 27, 2, 49, 81, 91, 31, 88, 35, 145, 92, -122, -191, 64, 30, 320, 39, 2, 22, 193, 64, 121, 7, 110, 21, 211, 192, 38, 39, -3, 30, 90, -16, 19, 5, -13, -23, 35, -95, 1, 181, 106, -14, 189, 107, 12, -90, 59, -30, -61, -97, 0, 79, -22, -59, 130, 73, 17, 122, 66, -95, 2, 21, 117, -27, 15, -86, 127, 92, -77, 33, -79, -13, -40, -58, 55, -180, -110, -29, 59, -22, -19, 113, -46, 46, -233, 15, -80, -178, -113, -56, 0, 80, -200, -91, 136, 77, -23, 191, -20, 23, 110, -6, 44, 89, -75, 142, -58, -112, 255, -45, -141, -32, 134, -123, -182, -93, 196, -144, -26, 101, 65, 191, -83, -2, 89, 106, -437, -324, -187, -263, -367, -59, -16, -95, -79, -6, -87, 102, 0, 103, 9, -325, 16, -26, -11, -158, -52, -312, 56, 209, 89, 59, -82, -113, 322, 63, 0, -54, 17, 43, -273, -51, 194, 112, -260, 180, -206, 62, -277, -31, 35, -172, -42, -307, -2, 194, 169, 150, 41, 182, -224, 48, -98, -141, -71, 16, 142, -54, -192, -75, -58, -14, 80, 38, -141, 84, -51, -235, 58, 67, 87, -244, 54, 36, -115, 10, -130, -476, -5, -315, 19, -30, -215, -19, -83, 175, -83, -86, 209, 179, -50, -31, -151, -4, -22, -62, 225, 90, -338, 78, -177, -79, -47, 251, -84, -133, -75, 6, -241, 21, -93, 50, -47, -52, 261, 174, 269, 165, 4, -215, -96, -130, 126, -39, -36, 44, -73, 109, -178, 123, -119, 33, -12, -151, -61, 50, -80, -130, 195, 17, -44, 108, 2, 75, 37, -31, -39, -302, -377, 31, -119, 53, 84, 149, -237, -17, -28, -12, -92, -107, -49, -132, -41, 103, 82, 25, 89, -341, 26, 3, -28, -194, -2, 6, 136, 14, 151, 89, 96, 270, 119, -183, -3, -168, -299, -120, 97, -386, 71, 170, -435, -18, -415, 177, -18, -165, 64, -49, 10, -42, -185, -130, 40, -513, -379, 4, -276, 26, -342, 26, 102, 32, 206, -114, 97, -61, -140, 72, 92, 138, -72, -60, -26, 315, -66, 21, 43, -121, 116, -21, 15, -4, -201, 50, -58, 34, -35, -119, 23, -65, -146, -16, 135, -44, 29, -43, 75, 89, -282, 116, 185, 27, 152, -71, -35, 1, -119, -33, -22, -86, -31, -104, 30, 107, 150, -124, 31, -67, -247, 54, 116, 43, -249, -12, 114, -683, -94, 82, -133, -69, 40, 4, 40, 39, -241, -547, -471, -624, -194, -229, 47, -509, -47, -120, -217, 70, -338, -75, 34, -97, -123, -395, 120, -176, -110, -159, 163, 237, -6, 86, 355, 31, 21, 111, -130, 214, 32, 10, 78, 98, -21, 348, -71, 196, 212, -170, 224, -52, -60, 28, 185, 87, -45, -54, -83, -69, 3, -33, -52, -29, -12, -101, -111, -9, 37, 30, -108, -11, 19, -17, -39, 0, 40, -14, -43, -56, -148, 54, -48, -291, -11, 58, -4, 77, 33, 47, 96, -51, 3, 12, -316, -122, -316, -15, -211, 243, 44, 118, -133, -63, -56, -4, 182, -62, 48, -199, -203, 30, -23, 34, -97, 164, -167, -120, -2, 323, -50, -215, 91, -68, -46, -102}
+, {-4, -132, 94, -20, 75, 15, -7, 6, 41, 34, 128, -145, -26, -65, -34, 26, -18, -23, 158, 215, 65, 130, 201, 196, -29, 126, 160, -148, -14, -123, 99, 143, 137, 9, 162, 314, 103, -34, 323, -44, 51, 56, 225, -277, 0, -68, 136, 65, 85, 0, 91, -80, 206, 75, -86, 52, 88, -15, 80, -38, 57, -76, 59, 38, -13, 13, -26, -21, -140, 58, -46, 118, 33, 22, -1, -31, -130, -250, -101, 83, 2, -154, 6, 177, 119, 23, 45, 159, 5, 30, 111, -221, -119, -266, -251, 97, -11, -207, -209, 136, -205, -72, 6, -71, 122, -20, -65, 73, -82, 45, 91, -125, 153, -53, -39, 96, -146, -24, -15, -39, 196, 20, -71, 156, 36, -8, 84, -168, 92, -5, -64, 75, -86, -25, -22, -41, -54, -28, -32, -27, -5, 72, 68, -52, 97, -117, -37, -31, -42, 17, 79, -46, 53, 8, 113, 54, -41, 21, 45, -83, -95, -106, -124, -75, -72, -2, -137, 65, -85, -326, 96, 22, -19, -14, -38, -5, 1, -37, -130, -387, -158, 113, -343, -128, -195, -30, -106, 72, 6, 38, -166, -371, -64, 70, -92, -102, -264, 22, 171, -295, 121, -143, -118, 114, 150, -35, 106, -201, -3, 250, -7, 60, -27, -64, 6, -113, -52, -7, 37, 62, 22, 257, 56, 28, -5, 345, 79, -125, -75, -17, -134, -77, -68, -118, -179, -17, 76, 249, -51, -26, 29, 69, 110, -20, -189, -82, 30, -251, -64, 165, -225, 136, 96, 193, -76, 15, 39, 230, 138, -66, -20, -121, -22, -70, -20, 73, -73, 50, 114, 156, 77, 88, 122, 55, 24, -80, 53, -100, 23, 202, 88, 108, -48, -68, -168, 30, -374, 111, 6, 21, 27, 304, -62, 100, -63, -179, 161, 69, -255, -31, 63, 166, -137, -136, -12, 24, -39, 74, -24, 67, 68, 63, -66, 125, 8, -103, 120, -98, -151, 6, 98, 51, -46, 111, -22, 142, 65, 74, -68, 298, -45, -163, 135, -180, -66, -12, -179, 9, -1, 95, 75, -77, 8, 178, 85, 169, -16, -188, -167, -268, -72, 65, -94, 7, -32, 119, -9, 164, 94, 12, 82, 27, 90, -172, 67, 85, 71, 42, 1, 62, -21, 116, 32, -3, 123, 200, -37, 96, 182, -175, -157, -161, 75, 70, 174, -254, -38, -49, 6, -25, 118, 218, 81, 145, -61, 112, -166, -224, 26, 53, 145, -428, 63, -26, 109, 138, 36, 27, 160, 44, 62, 26, -284, -182, 42, -50, 74, -239, 26, -25, 241, -143, -72, 27, -73, -113, 37, 126, -340, 126, -9, -24, -172, 4, 45, 15, 140, -220, 14, -99, -364, 21, 124, -28, -35, -36, 67, 1, -251, 79, -55, 78, 74, -52, 52, -31, -56, 113, 102, -55, 117, 42, 120, 43, -98, 227, -80, 19, -161, 111, 171, 53, -53, 179, 85, 30, 139, 163, 173, 73, 116, -157, 30, 12, -85, -72, 18, 67, 24, -48, 5, -13, -95, -24, -120, -126, 57, 51, -108, -46, -224, -247, -291, -47, 284, -219, -82, 64, -258, 20, -91, 124, -92, -97, -251, -167, -338, -402, -64, -1, -437, -385, -2, 117, -38, 61, -32, 34, -299, -88, -498, -238, -381, -351, -287, -99, -459, -344, 1, 53, 166, 42, -55, -196, -40, 186, -120, -261, 37, -155, -122, 227, -286, -148, -70, -42, 4, 39, -114, 43, -71, -70, -52, -120, -9, -75, -74, -107, -64, -91, -143, 3, 1, 52, -225, 66}
+, {24, 34, -18, -14, -2, -81, -92, -177, -6, 6, -55, -36, 63, -32, 13, -85, -50, 40, -76, -194, -154, -128, -161, -28, -283, -89, -338, 148, -8, 66, 116, -323, -87, -48, -74, -349, -121, -157, -179, 10, -192, 157, -330, 156, -6, 93, 206, -178, -19, -63, -183, -82, -59, 60, -194, 45, 21, 23, 233, -41, -53, 21, 80, -286, 158, 27, -31, 77, 263, 176, -54, 147, 101, -37, 127, -54, 64, -51, 39, -183, 122, 182, 29, 124, 138, -46, -37, 82, 88, 47, -77, -31, 138, 44, -13, 245, 25, -8, 152, -125, -24, -22, -152, -37, 95, 105, -23, -207, 20, 147, -202, -36, -37, 15, 124, -85, 16, -19, 7, -46, -17, 117, 13, -35, 94, 200, 9, -17, -34, 111, -21, 56, -123, -64, 135, 22, 67, 80, -52, 222, 4, 89, 52, 46, -144, 19, 12, -77, -41, -73, 102, 27, -65, -115, 6, -68, -79, -41, 101, -21, 12, -11, -54, 126, 32, 66, 106, -84, 10, 120, -120, -28, 103, -20, -38, 48, 137, 151, 21, 216, -28, 37, 121, 180, -47, 312, -4, -95, 43, -138, 102, 27, -111, -13, -30, -2, 112, -47, -128, 197, -50, 118, -11, 25, -124, -30, 21, 82, 56, -299, 272, -55, 258, 78, -61, -32, -3, 127, 148, 40, -65, -51, 193, 203, 116, -39, 204, 43, 4, -249, -23, -70, 72, 62, 68, 4, -110, 86, 24, 121, 107, 84, 23, -186, 16, 152, 40, -20, -120, -56, 90, 75, 71, 23, -13, -115, 1, -71, 13, -71, -35, 132, -55, 39, -63, 87, -109, -117, 115, -97, -69, -64, -25, -233, -132, 70, -36, 26, 204, 106, 15, -57, 30, 86, 49, -36, 189, -67, -3, -78, -130, 113, 26, -56, 183, 179, 183, 111, 246, 85, -59, -173, 63, 157, 20, -93, 30, 64, -10, -3, -24, 264, 51, -21, 91, 99, -218, 30, 87, -2, -61, 28, 184, -204, 23, -186, -77, -104, 101, -368, 39, 53, -271, 179, 0, 181, 26, -78, -46, -84, -49, 37, 147, -93, -350, -61, -121, 2, -107, -89, -66, 15, -55, -47, 38, 55, -96, -258, 65, 147, 111, -3, 19, 59, -126, -141, 99, 33, -113, 53, 43, -103, -64, 56, -7, -123, 128, 77, -4, 135, 195, 129, -114, -65, 0, -101, -250, 214, -151, -185, -260, -271, -88, -243, -234, 156, 27, 194, -183, -194, -280, 14, -238, -68, -224, -30, 11, -119, -127, 128, 20, 104, 47, -3, -3, 28, 70, -80, -119, 99, -64, 56, -7, 143, -200, 34, -43, -64, 8, -170, -118, 62, -7, -77, -38, -51, 13, 56, 66, 217, 81, -156, -162, 4, 144, -129, -84, -145, -74, -31, 29, -94, 28, 113, 64, -53, -89, 3, -110, 41, 97, 0, 50, 97, 258, -188, 24, -166, 111, 89, -107, -240, 26, -51, 3, -83, -24, 7, -11, -131, -218, -79, -68, -203, -97, -52, -46, -85, -190, -83, -88, -74, -44, -169, -126, -133, 38, -207, -251, 86, -96, 47, -50, 105, 221, 53, -38, -151, -103, -41, -138, -69, 251, -246, 101, 83, 141, 100, -77, -64, 432, -12, 65, -45, -196, -56, -55, -195, 294, -363, 97, -19, 94, 261, -90, -172, 188, -118, 106, -198, -124, -258, -80, -180, 91, -427, 63, -126, 304, 77, -79, -37, 105, -90, -20, -28, -258, -219, -97, 8, 177, -171, 124, 6, 128, -117, 26, 106, -6, 47, 126, -74, -266, 76, 86, 116}
+, {67, 82, -66, 76, -87, 29, -11, -48, 96, 150, 62, -102, -18, -1, -281, -38, -26, -37, 17, 147, 131, -4, 134, -9, 170, -26, 185, 16, -39, -67, -134, 138, 15, -20, 23, 34, -180, 52, 267, -74, 48, -74, 41, -101, -112, -125, 329, 45, 128, -37, 12, -58, 158, -127, 78, 85, -117, -65, 138, -57, 51, 49, -22, 57, -84, 5, 24, -57, 127, -128, 19, 56, 52, 3, 150, 17, -34, -1, 58, 109, 19, -11, 132, -139, -106, -24, -295, -159, 0, -25, 180, 47, -278, -44, -138, -119, 149, -212, -2, 70, -6, 36, 147, -63, 161, 175, 27, -55, -159, -118, -1, 76, -187, -99, 38, 103, 122, 89, -16, 12, 29, -23, -146, 57, -16, 14, 300, -70, 25, -1, -37, 42, -20, -149, 114, -231, -62, 61, 47, 82, 22, 167, 168, 74, 117, -7, -90, 82, 51, 65, 122, 24, -104, 86, 138, -30, 48, 62, 40, 55, 42, 3, 12, 127, 25, -2, 58, -44, 85, -33, -129, -109, -101, 7, -135, 8, 81, -167, 117, 39, -156, 141, 8, -85, 39, -77, -141, -222, -205, -76, -126, -85, -86, -216, -281, 4, -382, -299, -14, -213, 114, -342, 10, 164, -297, 131, 186, 25, -117, 35, -483, -167, -514, -147, 134, -259, -126, -291, 109, 131, -192, 286, 333, -238, -250, -74, -550, -50, -425, -197, 72, -47, -303, -374, -58, 88, 181, 248, 167, -266, 201, -122, -337, 70, -193, 142, -57, -61, -71, 211, -113, 79, 145, -39, 14, -304, 16, -192, -91, 11, -4, 143, -64, 27, 24, -30, -171, -179, -20, -191, 37, -128, -7, -132, -112, -97, -184, 68, -154, -94, -94, -15, -53, -73, 44, 7, -61, -193, -128, 103, 224, 52, -17, -164, -206, -153, 272, -87, -294, -61, 43, 166, -384, 107, -199, 237, -68, -185, 15, 47, 53, -381, -343, -27, -234, -124, 157, 318, -182, 112, -102, 199, 48, -122, 4, 59, 173, 32, -414, 5, -55, -59, 36, 29, 109, 113, -7, 97, -72, 68, 179, 37, 23, -67, 192, 69, -126, -51, -98, 103, 82, 177, -48, 85, -46, -25, 45, 9, 23, -62, -106, 88, -209, -146, 226, 125, 50, 21, -171, -2, -220, -64, -77, -2, 92, 14, -65, 196, -57, -37, -128, 81, 169, 116, 208, 86, 120, 74, 19, -173, 114, 61, -34, -9, -75, -37, -26, -241, 93, 143, -42, 202, -51, -101, 99, 22, -6, -81, 295, 100, -7, -20, 52, 34, 21, 58, 77, 195, 71, 147, 95, 10, 41, -39, -33, 20, -55, 107, 39, 66, 14, 73, -109, -78, 32, 28, -39, -90, 19, 70, -32, 30, -24, 59, 54, 16, 21, 44, -177, 215, 56, 3, 132, -241, 97, 123, -65, 64, -21, -16, -70, 88, 92, 131, -95, 333, 55, -49, 152, 13, 103, 84, -64, 254, 106, 86, 94, 114, 66, 22, 342, -199, 58, 136, 28, 92, 146, 343, 42, 159, 115, -12, -13, 63, 101, 56, 49, -109, 64, 106, -28, 94, 2, 53, -129, 28, -4, 41, 84, 95, 18, -2, 47, -114, -49, 42, 23, 62, 37, 156, 52, 40, 76, -26, 34, 67, 21, -66, 48, 33, 242, 3, 52, -67, -86, 58, -2, -5, 52, 67, -168, 102, -43, 25, 11, 117, -42, -153, -83, -96, -10, -42, -64, -191, -51, 156, -59, 13, -10, -60, 148, 2, -205, -40, 1, -36, 15, 34, -125, 159, 214, 187, 96, 147, 74, 13}
+, {-36, 165, 86, -35, 77, -11, 92, 190, 112, 120, 119, -94, 182, 112, -131, 247, -219, 53, 78, -24, 73, 16, -224, 94, 194, -233, 62, 187, -39, -59, -118, 54, 56, -34, 85, -264, 51, -194, -117, 97, 267, -115, 167, 94, -78, -63, 221, -42, 95, -62, -45, -25, 92, 136, 74, 171, -116, -79, 51, 3, -29, -105, -25, 43, 117, 122, -6, 82, 149, 138, -14, 155, 168, -31, 128, -15, 126, 5, -139, -57, 124, 192, 58, -63, -33, -249, 32, 21, 47, 253, -32, 137, 98, 47, -157, -143, -56, -110, 147, 26, 172, 23, 44, 69, 0, 259, 150, -31, -32, -115, 171, 214, 97, 4, 250, -69, -23, 17, -21, -36, 217, -180, 158, 172, -201, -158, 115, 47, 284, -21, 139, -185, 219, 68, -105, -18, 300, -156, 79, 174, -140, -41, 11, -52, 295, -119, -133, -137, 5, 426, -87, -114, 151, -140, -99, -131, -55, 110, 105, -76, 264, -54, -44, 157, 139, 391, 15, -87, 136, 96, -142, -218, 155, -205, -5, -60, 190, -34, -104, -51, -253, 171, 126, -29, -27, 269, -155, -417, 58, -345, 10, 8, 47, -45, 29, 312, -97, -126, -105, 117, -64, -64, -158, 134, -112, 112, -12, -135, 54, 104, -57, -228, -74, 12, -189, -79, 83, -50, -147, -116, 50, 63, -85, 9, 158, 6, -30, -17, -27, -6, -165, -93, 207, -62, -39, -241, 203, -117, -195, 3, -72, -4, 98, -109, 27, 195, -115, 27, 119, 64, 80, -64, -148, 213, -100, -78, -2, -152, -42, 28, 53, -145, 68, -32, -8, -12, 52, 80, -143, 6, 128, 2, -386, 27, -342, -93, -315, -226, -81, 66, -219, -78, 97, 104, 109, 35, 247, -178, 156, 301, 313, -236, -37, 6, 164, -114, 61, -3, -44, -91, -77, -2, -30, 153, 23, 67, 124, -210, -5, 46, 189, 64, 219, -81, -9, 120, -177, 237, 209, -156, -19, -207, -3, -142, -26, 37, 46, -137, -52, -144, 128, 76, -122, 135, 138, 3, 45, 6, 41, 14, 130, -49, 42, -20, 104, -59, 22, 105, -150, 226, 58, 162, 29, 26, 92, -196, -106, 34, 0, -32, -2, -275, 14, 176, 59, 39, 79, 87, -45, 48, 84, -217, 164, -191, 196, -101, -93, 22, 89, 166, -92, -19, -52, 128, 99, 411, 449, 138, 120, -36, 246, -40, 15, -28, 144, 134, 158, 221, 240, 289, -180, 174, -80, 111, -82, -64, 46, -112, -295, -5, -42, 66, 145, 314, 145, 116, -8, 196, -18, 23, -100, -65, -14, -138, 57, -102, -78, 76, 43, 66, 101, 152, -5, -62, -183, 2, -131, -14, 99, -23, -59, -37, 37, 60, 209, -35, -16, 2, -23, 111, 6, 17, -24, -121, -60, 202, 19, -36, 116, 124, 10, 92, -58, 49, 202, 81, 78, -54, 114, 31, -8, 108, 9, 185, -18, -164, 57, -131, -116, 11, -17, 263, 96, 181, 53, -117, 133, 41, 150, 165, 28, 85, -174, 132, 32, 103, -15, 153, -175, -82, 99, 42, 59, 62, -49, 0, 42, -72, 75, 27, 41, -111, -12, -31, -29, 13, 95, 107, -24, 69, 166, -13, -59, -181, 118, 6, -33, -198, -61, 53, -140, -28, -57, 151, -11, -10, -54, -109, -17, -13, 94, -60, -6, -18, 84, -24, -174, 91, -34, -112, -1, -36, -52, 226, -5, 8, 51, 15, 13, -27, 115, 275, -87, 116, 29, 50, 37, 75, 0, 299, 88, 98, 0, -57, 29, 14}
+, {281, 84, 298, 121, 37, -1, -103, 112, 129, 170, 98, 146, 64, -13, -64, 101, -88, -53, -48, 163, -40, 14, -125, 108, 186, -69, 84, 31, -44, 7, -160, -59, 196, 16, 129, 31, 34, -84, -133, 114, -112, -20, -18, 106, -7, -11, -106, 60, -2, 50, 69, -95, 165, 95, 53, 16, -133, 46, 202, 103, 117, 28, 77, 75, 108, 63, 19, 255, 123, 15, 163, 8, 177, 197, -129, -10, 53, 17, -16, -3, 83, 204, 175, 13, -68, 102, 103, 54, -7, 47, 209, -80, 196, -33, 14, 109, 181, -160, -120, 180, -38, 3, 54, 48, 231, 175, 41, 37, -162, -190, -63, 29, -2, -90, -143, 57, -36, -156, 44, -79, -188, -55, -18, -16, -178, -141, 113, 179, -162, 24, -245, -28, -43, 31, 82, 18, -160, -169, 31, -1, -29, 0, 7, 34, 68, -41, -94, 109, -15, -67, 141, -6, 17, -52, -177, -33, -7, 41, 69, -27, 15, -92, -97, 95, -66, 104, 120, -96, 3, -91, -80, -28, 20, -102, 191, -104, -64, -81, -87, 18, -110, 156, 136, 58, -159, -22, 88, -44, 236, -116, 92, -67, 156, -273, 91, -35, -111, -178, 10, -118, 244, -185, -264, 50, -186, -36, -168, -238, -115, 9, -223, -202, -70, -52, -108, 8, 128, -48, -152, -80, 113, 140, -42, -53, 48, 62, -218, -19, -3, 218, 68, -42, 67, 63, -40, -194, 368, -114, 72, -22, 7, -2, 95, 92, 31, -271, 17, 63, 118, -116, 17, -85, -17, 71, 235, 67, -323, 35, -31, -117, 91, -118, 77, 26, -146, -552, 121, 193, -90, 269, 338, 82, -416, -71, -483, -143, -221, -368, 102, 93, -247, -352, 186, 131, 103, 127, 285, 22, -34, 122, 120, -410, 77, -27, 61, -126, 160, -271, -15, -201, 33, -3, 26, 145, -99, 170, 232, -331, 27, 51, -37, -113, 179, -215, 66, -70, -106, 208, 168, 44, -55, -73, -51, -182, 69, -111, 101, -81, -80, -204, 54, 183, -130, 127, 120, -125, 0, 233, 79, -240, -2, -209, 69, -58, -74, -200, 63, 158, 87, 251, 116, 124, 97, 125, 70, -257, 69, -195, -138, -112, 109, -228, -17, -84, -402, 15, -390, 23, -11, -23, 88, -275, 212, -69, -179, -200, 14, -243, -169, -188, -395, -99, -653, 126, 120, 109, 202, -51, 100, 167, 34, -245, 145, 18, 75, -15, 7, -7, 48, 124, -65, 58, 5, -297, 103, -11, 126, 4, -39, -15, 55, 38, 146, 52, 25, 81, -54, -51, 31, -109, 108, -97, -69, -84, -47, -29, -63, -205, 38, -91, -26, -18, -106, 193, -134, 112, -68, -71, 77, 23, -78, 54, -110, -28, 99, 71, -5, -6, 5, -292, -60, 112, -73, 277, -91, -91, 4, 13, -273, -155, 154, -227, -26, -177, 129, -419, -5, 94, -136, 151, -141, -68, -24, 125, -236, -364, -27, -255, -120, -68, 180, 193, -12, 121, 361, -76, 45, -56, 99, 177, -40, -15, 172, -18, -83, 373, -168, 70, 50, 41, 80, -23, 6, 178, -29, 127, 19, 49, -25, 44, 23, 4, 99, -37, 172, 139, 50, -123, 4, 116, -255, 68, 32, 0, 147, 103, -11, -72, -214, -98, -157, 0, -160, -256, 13, 167, -175, -65, -93, 12, 2, -143, 0, 52, -200, 9, -253, 20, -63, 33, 14, 131, -286, -52, -170, -55, 83, -82, 24, -170, -156, -1, -161, 142, -48, 49, -136, 93, -94, 84, 87, 4, 84, -234, 46, -234}
+, {123, -159, -124, -47, -184, 34, -102, -151, 0, -69, -2, 116, -58, -22, -4, -111, -18, 24, 30, 46, -156, -80, -71, 139, -134, -85, -215, 63, 25, -11, 161, -271, -162, -47, 148, -270, 87, 51, -300, 112, -321, -197, -275, -90, 42, 101, -6, -11, -72, -23, -9, -291, -266, -388, -140, 53, -107, 36, -332, 57, -48, 26, -3, -129, -274, -99, -190, -66, -60, 25, -113, 32, 19, 95, 171, 52, -25, 7, 56, -169, -17, 13, -40, 91, -142, 91, 238, 81, -110, 210, 149, -123, -35, -46, -36, 147, -39, 60, -122, -6, 64, 38, 39, -36, 22, -144, -65, 140, 38, 54, -48, 11, -164, -42, -181, -390, 78, -32, -75, 45, -347, 91, -153, -250, -34, 103, -280, 33, -187, 112, -19, -62, 61, -40, -41, -44, -450, 41, -269, -90, 118, 135, -89, 49, -468, 17, 131, -51, 93, -668, 113, 43, -242, -115, 169, 134, 57, 73, 162, 74, -301, -16, -43, -224, -52, -559, 81, 53, -81, -275, 81, 157, -140, 30, 91, 84, -196, 81, -65, -148, -78, -340, 133, 51, -138, -72, 199, 134, 25, -8, 170, 5, -35, -47, 111, 89, -56, -26, 57, -50, -8, -15, 181, -40, 17, -120, 116, 104, 32, -62, 90, 17, 47, 82, -84, 18, -50, 83, -40, -115, -97, -172, -14, 34, 118, -155, 55, 63, 77, -196, -78, 56, 164, -21, 158, 13, -285, -101, 66, 38, -70, -35, -53, -102, 7, -117, 77, -20, 119, -20, 134, 130, 43, 0, 146, 83, -16, -3, 23, -50, 227, -89, -155, -57, -8, -129, 77, 191, -71, 95, 122, 12, 154, -43, -21, -165, 214, -49, -212, 106, 18, -40, -81, -151, 25, -77, -307, 5, 58, -202, -27, -49, 57, 41, -67, 179, 70, -36, 55, 82, 46, -87, -36, -141, 132, -60, 95, -18, 77, -119, -76, 58, 32, -4, 21, 113, -231, 21, -30, 64, 12, -62, 45, -44, -102, -238, -2, -198, 58, -194, -78, 93, 11, 150, 129, -63, 37, 24, -311, -134, -142, 308, -122, 11, 7, -68, 54, 41, -53, -6, -114, -192, 127, -49, 16, 34, 23, 313, -305, -29, 43, 408, -8, -240, -28, 24, -195, -165, 148, -221, -87, 224, 100, 209, -184, 100, -21, 107, -240, -258, -237, -285, -130, -93, -29, -178, -161, 3, -20, 33, 1, 146, -7, 180, -133, -21, -85, -124, 7, -43, -73, 72, 68, 286, 9, -61, 55, -89, 294, -179, -7, 69, 41, 104, 199, -3, -76, 155, 40, -407, -89, -59, -148, -160, 178, -102, 2, -10, 173, 64, 68, -12, 65, 3, -197, 78, -176, 3, 51, -20, 199, 98, -31, -8, 21, -31, -58, -140, 40, 61, -64, 102, -40, 95, -29, 65, 17, 64, 70, -377, 199, -149, -83, -177, 145, -43, 144, -4, 131, 25, -175, -52, 33, 147, -12, -36, -122, -38, -1, 21, 129, -24, -85, 103, -186, -139, -174, -106, -34, -104, -180, 106, -105, 155, -21, -266, -141, 30, -290, -89, -219, 3, -71, -188, 316, 145, -32, 7, 139, 89, -44, -42, 169, 12, 96, 177, 10, 119, 44, -58, 96, -31, 38, -17, 86, -98, -35, 54, 83, 8, -14, -6, 55, 93, 58, 22, 184, 120, -44, -77, -94, -183, 14, -15, 40, 115, 124, -23, 226, -47, 5, 187, -57, 132, -32, 15, -13, -66, -145, 63, 318, 227, 390, 118, 129, 8, -38, 42, 167, 101, 285, 151, -146, -93, -54, 90}
+, {-21, -93, 78, 54, -95, -116, -85, -7, 1, 44, 118, -123, -168, -70, 51, -4, 35, -26, -29, 30, 99, 75, 110, 185, 74, 128, 22, -56, -62, -1, 64, -49, -7, -71, 76, 213, -65, 78, 175, -130, -16, 56, -217, -102, 44, -96, 104, 24, -65, -21, 23, -30, -180, 52, -15, -67, -39, -10, 56, -205, -81, -66, -143, 36, 88, 55, 41, -102, -109, -45, 88, 150, 65, 42, 162, 46, 21, 33, -22, -35, 195, 58, 95, 192, 130, -104, 29, 269, -23, 18, 182, 53, 262, 26, -121, 36, 59, -13, 87, 8, -65, -96, -109, -177, -63, -14, -106, -70, -24, 118, -87, 47, 160, -53, -183, 276, -69, 19, 108, 102, 225, 104, -125, -163, 1, 23, -137, -246, 246, 35, -116, 249, -221, 25, -11, 213, 232, 44, -153, -65, 72, -5, 81, -166, 29, 16, -163, 115, -139, 253, -6, -48, -81, 80, 25, 9, 76, -48, -86, -87, 86, -1, 89, -114, -103, 66, 29, 177, 3, -29, 416, 103, 117, -16, 234, -28, 156, -51, -119, -132, 108, -175, -22, 16, -68, 162, 199, 202, 330, 60, 130, 91, 115, -162, -36, 22, -52, 13, -7, 183, -123, 105, -33, -176, 17, -61, -215, 50, -21, 86, 177, 115, -7, 126, 25, 20, 58, 29, -275, -120, 104, -167, -248, -126, 63, -110, 306, 16, 31, -92, -8, 79, -12, 73, -83, -90, -15, 1, 60, -217, -107, -163, -43, -107, -344, 192, -203, -115, -162, -60, -25, 51, 57, 43, 2, -120, 90, -57, 86, -66, 142, 180, -42, -84, 54, 51, 102, 135, -57, 74, 53, 76, 289, 50, 161, -74, 149, 77, 136, -27, 31, 73, 274, 162, -13, 0, -9, 165, 45, -159, -68, -24, 102, -24, 86, -13, -146, 99, 126, -151, 97, -124, -60, -199, -162, -159, 58, -166, 173, 147, 62, 155, -132, 193, -4, -106, -70, -247, -60, 24, -13, 4, 170, 16, -7, -241, 219, -84, -165, -134, 78, 74, -232, 17, -11, 179, -41, 328, 79, 16, -52, -151, 119, -25, -71, -78, -87, -126, -33, -46, -95, 172, -38, 24, -78, 142, -27, -28, 4, 132, -81, 17, 6, -19, 118, 24, 39, -47, 129, -11, -31, -28, 6, 85, 75, 53, 92, 90, 300, -83, 17, -30, 82, -25, 83, -301, -305, 194, 118, 81, -35, 2, -89, 209, 25, 194, -44, 39, 0, 8, 117, -138, 136, 70, 63, 92, 30, 145, 51, 24, 116, 14, -14, -165, 91, -11, -48, -159, -18, -81, -62, -112, 74, 71, -55, 33, 64, 108, -145, 0, 163, 94, 42, 197, -28, 45, -59, -295, -37, -55, 71, -31, 81, 17, 14, 38, 107, 134, 70, 66, -47, -72, 117, 113, -56, -60, -7, -98, 146, 5, 62, -2, 9, -27, 46, 212, 219, 53, 213, -206, 137, 165, 10, 157, 5, 97, 35, 87, 24, 177, 37, -270, -62, -104, -164, -127, 44, -40, -126, -74, 84, -38, -107, -38, 75, -147, -12, -195, -1, 155, -75, -6, 16, -3, 70, 1, -21, 59, -127, 102, 84, -100, -47, -132, 17, -37, -37, 65, -25, 2, -305, -89, -57, 86, -101, -27, 44, 37, -24, 113, -71, -3, -33, -46, -77, 103, -83, -124, -34, 53, 118, 68, 56, 36, -30, 234, 29, -68, 112, 25, 20, -9, -42, -72, 38, 115, 49, 104, -22, -5, 156, 38, 86, 119, 163, 70, 149, 405, -30, -173, 83, -36, -83, -191, 236, 250}
+, {52, -76, -44, 66, -4, -96, 92, 79, 157, -27, 222, 151, -80, 53, 90, -45, -23, -73, 44, -87, 154, 13, 118, 252, -52, 147, -152, 24, -86, -49, 196, -194, -35, 22, -46, -183, -140, 13, 1, -15, -87, 77, 231, -119, 44, -28, 77, -122, -57, 26, -14, -94, 54, -100, -51, 127, -53, 63, 43, -47, 31, 32, -15, 144, -130, -198, -122, 143, -74, 41, 189, -105, 5, 50, 166, -31, -210, -4, 12, 98, -113, -380, -239, -3, -39, 184, 163, 27, -204, -188, 337, -155, -209, -101, 79, -51, 65, -20, 256, 61, -38, -145, 19, -29, 329, -205, -148, 278, -149, 53, 93, -19, -326, -19, -76, -108, 41, 4, -88, -91, -282, -34, -48, 97, 30, 116, 25, -9, -336, 48, 22, -107, 40, -57, 201, -130, -426, 35, 79, -40, 15, 138, 95, 27, -90, 92, 78, 16, 165, -412, -6, 49, -67, -53, -18, 37, 157, 55, -11, 72, -220, 60, 65, 34, 3, -52, -20, -89, -15, -69, -102, 41, -202, 26, 25, 36, -183, -47, -115, -120, -69, -119, -110, -68, -39, -107, -64, -58, -314, -52, -87, -98, 120, 51, 212, 158, 96, -45, -24, 28, -15, -18, -7, 58, 9, 85, -56, 123, 7, -17, -105, 43, -11, -29, 42, 110, 111, 67, -53, 29, -144, 16, 14, 0, -16, 50, -29, 43, -34, 157, 167, 65, 26, 10, -29, 71, 104, 84, 110, -120, 170, -82, -31, 206, 184, -15, 74, 0, 10, -114, -94, 89, 125, 3, -44, -64, -78, 174, 13, -21, 65, 91, 72, -22, 70, -272, -20, -71, 13, 68, -210, 121, -173, -132, -6, -68, -156, 173, -122, -123, 89, -326, -172, -52, -84, -33, -148, -184, 116, -290, -150, -121, 31, 61, -56, 119, -15, -80, 53, -28, -65, -145, -22, -156, 113, 155, 51, 80, 37, -44, -113, 90, 233, 5, -64, 12, 43, 5, -80, 92, -214, 57, -124, -162, -89, 214, 32, 8, 160, 131, -67, 25, 307, 31, -48, -6, 112, -87, -26, 179, 16, 119, -100, 58, 97, 67, -55, 31, 131, -10, -139, -372, 92, -27, -5, 20, -37, 106, -112, 66, -25, 152, -189, -339, -212, -92, -191, -89, 35, -31, 117, 23, 106, 62, -17, -125, 138, -155, 5, -206, -81, -227, -39, -5, 60, -100, 15, 28, -46, -141, -108, -118, 41, -139, -155, 110, 47, 64, 29, -67, -292, -18, -292, -227, -247, -14, 4, -23, 62, -95, 9, -37, -63, 48, -32, -113, -189, -168, -403, -44, -151, 55, -25, 72, -215, -15, 102, -14, 20, 24, -35, -54, 14, -50, -64, 96, 101, 79, -21, 136, 119, 121, 38, -113, 29, -126, -136, -120, -34, -386, -64, 61, 214, 55, -116, -2, -70, -76, 34, -61, 91, -162, -162, -116, -71, -36, 116, -244, 87, 83, -161, -210, 163, 23, -146, -146, 75, -57, -197, -44, 14, 189, 39, -168, 263, 274, -101, 72, 110, 176, 128, -104, 303, -55, -172, 154, 87, -101, -34, 211, 26, 90, 76, 26, 80, 336, -225, -436, 139, -213, -229, -172, 97, -135, 179, 94, 31, 116, -28, -29, 280, 68, -123, -113, 9, -173, -194, -269, 117, -334, 6, 25, 78, 287, -92, 60, 165, 171, -8, -294, 13, -213, -96, -205, 77, -352, -15, -134, 203, 136, -302, 66, -1, 177, 138, -125, -244, -160, -163, -103, 114, -105, 129, 34, 129, -92, 141, -65, 135, 196, 135, 135, -285, 54, 18, 77}
+, {-36, 44, 43, 103, -96, -45, 162, -43, 92, 92, 30, -18, -82, 28, -118, -37, -171, -140, 55, 43, 49, 50, -87, 271, 98, -78, -5, -63, -46, -58, -102, -151, 8, 56, 90, 161, 71, 44, -166, -29, -205, 55, -312, -29, 35, 60, -371, -49, -16, 55, 27, 180, -109, 158, 97, -47, -130, 22, -377, -104, 24, 72, 19, 15, 26, 34, -46, 136, 14, -79, 154, -68, 136, 172, 208, 41, 37, 25, 35, 21, 100, -29, 7, 257, -11, -74, 181, 158, 68, 217, 284, -71, -127, 47, -49, 13, 113, -77, -50, 63, 57, -63, -134, 81, 246, -33, -154, -139, -44, -70, -301, -21, 92, -106, -54, 74, 145, 79, -124, 52, -229, 25, -144, -378, -45, -328, -216, -113, 130, -39, 59, 101, 171, 175, -66, 10, -99, 60, -126, 28, 19, -310, 125, 19, -43, -28, -169, 40, -70, -180, 198, -3, -197, 236, 83, 150, -217, 71, 126, 101, -204, -93, -209, -66, -79, 5, 69, 53, -97, -225, 72, 191, 88, -93, 142, 4, -98, -242, -384, -112, -290, 286, 70, 54, -340, -255, -8, -29, 301, -133, 122, -96, 147, -73, 75, -114, -98, -53, 28, -133, 127, -152, -46, 72, 77, 21, -50, 15, -136, -90, -226, -78, 12, 42, 41, -31, -124, -103, -38, -70, -166, 11, 117, -79, 69, -51, 1, -28, -22, -7, -40, -152, -17, 42, -44, 107, -92, 82, 126, -138, -409, 107, -140, -247, -179, 4, 64, -228, 40, -252, -153, 232, 42, 162, 139, 101, -93, 50, -21, -407, -100, -42, -259, -392, -86, -227, 53, 45, -57, 116, 38, -31, -310, 111, -28, -398, -283, -58, -658, -295, -77, -155, -237, -73, 101, 46, -370, -279, -193, -8, -103, 122, 79, -47, 113, -186, 14, -205, -30, 109, 106, -48, -27, 74, -218, 239, -89, -147, -121, -2, 116, 10, -161, 38, -107, -50, 112, 154, 17, 98, 28, 122, -105, 58, -137, -184, 118, 94, -171, -7, -169, 14, 340, 46, -65, 26, -158, 364, 33, -63, -20, 52, 32, -151, 4, 403, 59, 7, 169, 20, -56, 20, -24, 115, -18, -9, 75, 89, -10, 17, 9, 34, -60, -161, -16, 29, -11, 88, 16, -3, 84, 4, -62, -128, -46, 3, 43, -178, -242, -225, -300, -34, -276, 147, -88, 93, -99, 76, 110, 108, 25, -59, 46, 33, 18, -33, 22, -230, 7, 151, 54, 10, -81, 172, -11, -12, 33, -2, 183, -81, 31, 13, 35, 13, -54, 1, -30, 1, -19, 107, 0, -108, -18, 84, -87, 37, -128, -95, 39, -37, -95, -51, -233, -62, 26, -67, 96, -17, -70, -40, -99, 4, 162, 13, -4, -42, 176, -14, -40, -120, -9, 6, 119, -58, -55, -53, 24, -8, -5, 31, -40, 87, 62, -6, -11, 183, 37, 33, 236, -24, 153, 151, 16, 154, 85, 124, -97, 102, 67, 93, 180, -72, 106, 32, 1, -73, 15, 67, 242, 41, -20, -29, -279, -14, 25, -50, -139, -171, -217, -25, -286, -15, 39, 203, 13, -159, -9, 26, -7, -54, 66, -242, -16, 14, -206, -106, 35, -360, -6, 36, -232, -362, 27, 18, 199, 41, 16, 12, -119, -33, 93, 34, 67, -380, 1, 83, -546, -108, 23, -1, 80, 46, -17, -3, -56, 314, 122, -50, -28, -9, 42, 41, -168, 1, -39, 102, 62, 58, 10, 67, 302, -32, 238, 224, 204, 10, 133, 233, 42, 197, 183, 171, 13, 176, -10, 25}
+, {-5, 186, 215, -79, 284, 88, -29, 210, -69, 64, 120, 12, 94, 68, 135, 194, 211, 27, 129, 80, 131, 2, -237, 67, 391, 16, -28, 98, -30, -64, -166, 87, 202, -85, -83, 264, 53, 109, -126, 155, 438, 42, -148, -54, 56, -143, -51, -135, 73, -61, 80, 200, 95, 305, -47, 84, 137, -40, -227, -110, 112, -35, 7, -26, 283, -52, 122, -89, -39, 176, 102, 32, -61, 101, 136, -125, 69, -103, -175, 73, 195, -36, -34, 110, 170, 134, 241, 411, -7, 111, 155, -49, 15, -142, 76, 50, 184, 47, 192, -178, 23, -76, 36, 36, 23, 103, 207, 237, -132, 12, 60, 63, 324, -29, 86, 82, 7, 91, -194, 100, 493, -90, 134, -308, -109, -58, -311, -150, 214, -235, 67, 61, 20, 63, -243, 33, 432, -38, 69, -283, -74, -68, -225, -237, 81, -288, -76, 99, 143, 221, -266, -101, 146, 69, -295, -196, 72, 15, -135, -311, 169, -17, -129, 138, -251, 171, -341, -191, -1, 107, -316, -114, 26, -7, 30, -201, 232, 42, -176, 22, -110, 97, -120, 128, -49, 55, -104, -2, 93, 71, -46, -202, 213, 193, 119, 70, -73, -64, -204, -32, 98, -186, -91, 102, 9, 116, -106, -129, 198, -41, 141, -29, -80, 10, -273, -116, 342, -64, 27, -292, 67, -258, -280, -47, 53, -284, 87, 31, 69, 101, -188, -77, 116, -2, -233, -462, 126, -299, -362, -133, -19, 18, 39, 115, 78, 36, -289, -152, -1, 135, -227, -225, 172, -85, -243, -39, 7, 52, -3, 27, -148, -134, -174, 64, -73, 179, -107, -40, 129, 83, -378, 19, 41, 76, 99, 64, 177, -133, 39, -103, 63, 70, -176, 95, -213, 149, -87, 123, -38, -84, -12, -330, -105, 109, 37, -16, -62, -40, -77, -288, -29, -199, -35, 22, 18, -221, 100, 119, 75, 49, 73, 101, 202, 63, -28, 15, -106, -74, 41, -109, 38, -42, -47, -62, 102, 76, -48, 80, -43, 51, 28, -11, -149, -93, -49, -73, 52, 30, 26, -67, 37, -27, 216, 185, 95, 86, 29, -6, -184, -107, 8, -4, -65, -154, -19, 7, -218, -12, 154, -105, 3, -104, -51, 172, 10, -235, -1, -18, 189, -27, 50, 161, 28, 50, 127, 73, 37, -44, 33, -53, 32, 36, 104, 64, -50, 95, -27, 163, -176, -123, 1, -146, -9, 12, -7, -9, -29, 110, -12, 95, 58, -181, -63, 173, -108, -19, 94, -85, 26, -46, 28, 87, -120, 44, 20, 24, -91, -66, -193, -83, -44, 45, 24, 74, 251, 119, -45, -42, 63, -47, -17, 53, 25, -147, 15, 69, 114, -32, 31, 209, 51, -81, 137, 26, -81, -84, -44, 69, -166, -144, 80, -3, 13, -88, 97, 106, 2, -116, 21, 226, 99, -62, 89, 113, -3, -88, -211, -37, -116, -103, -49, -27, -153, 52, 86, 4, 264, 50, 74, -53, -135, 58, -19, 91, 18, -146, -210, -91, -33, -91, -236, 71, -64, 156, -141, 107, -42, -81, -167, 13, -235, 163, -64, -86, -38, -51, -82, -22, 96, 2, -63, -96, 113, -49, 120, 19, 113, -23, -9, -25, 174, 94, -31, -12, -86, -60, -25, -235, 73, -47, 51, -40, -65, 142, -180, -26, 86, 53, -30, 31, -108, -17, 6, -20, 148, 122, -44, -60, -41, -67, 140, -323, 82, 113, 59, -40, -73, 143, 15, 144, -109, -42, -51, -12, -59, -39, 11, -100, -99, -119, -37, -43, 30, -23, -189, 23}
+, {-13, 76, -16, 51, 0, -37, 193, 21, -53, 27, 45, 177, -3, 23, 122, -54, 42, -64, 112, 98, -73, -172, -19, 67, -116, -139, -15, 144, 31, -55, 244, -46, 60, 49, 21, 30, 123, 99, -7, 50, 152, -87, 146, -62, 35, -21, 220, 58, -154, 66, -37, -18, -10, -43, 49, 245, 57, -170, 53, 16, 42, 9, 6, 81, 135, 36, 55, 26, 194, 168, 92, 139, 59, 59, 105, 170, -20, 12, -137, -81, 149, -131, -81, 159, 119, -23, 13, 10, 140, 0, 210, 202, -105, 93, 62, -214, 128, 63, -50, -23, -84, -142, 28, 44, -3, -189, 50, -17, 29, 48, 90, -57, 51, 7, -84, -197, 98, -104, -83, 137, -16, -126, -100, -183, -43, -107, -335, 48, 45, -259, 157, -6, 164, 14, -203, 191, -27, -89, 23, -482, -157, -149, -356, -62, 53, -77, 23, -67, 63, 160, -142, 16, 77, 106, -137, 51, 156, -105, 66, -59, 112, -2, 90, -38, 59, 182, -180, 41, -29, 117, -2, 78, 173, 36, -65, 59, 57, 250, 125, 45, 329, 179, -1, -107, 49, 50, -24, 28, 107, 147, -114, 47, 88, 25, 163, -73, -31, -86, 33, -72, 32, 111, -48, 81, -145, 128, 184, 39, -131, -115, -41, -248, -152, -269, -113, 58, 112, -173, 17, -11, -123, -50, 29, -240, -49, -183, 12, -217, 147, 105, -283, 42, -226, -103, 119, -185, -122, -247, -221, 130, -1, -27, 67, -89, 144, -141, -137, -136, 116, 68, -125, -149, -279, -95, -155, 69, -180, 29, -154, 14, -350, -85, 158, 44, 13, 77, -156, -61, -63, -123, 11, -9, 261, -129, -80, 60, 35, 4, 23, 198, 15, 1, 122, 104, 152, 153, 192, 63, 172, 56, -28, 119, 65, 101, 210, -49, 129, 97, 92, 59, -68, -124, 94, 116, -320, 226, -211, -34, -83, -96, 42, -272, -136, -63, -376, -118, 88, -23, -404, 195, -156, -139, -290, 78, -208, 95, 148, -19, -193, 5, -136, -204, 146, -395, -304, -252, 60, -453, 125, -32, 83, -270, -115, -22, 38, -73, 64, -71, -7, -205, -91, -95, 18, -94, 4, -13, 31, 131, -219, -88, 6, -271, -90, -5, -31, -77, -14, -70, 1, 6, -62, -246, -56, 116, -101, -134, -185, 88, -128, -49, 210, 55, -6, -149, 36, -109, -4, -50, 94, 1, -107, 2, -106, -1, 80, -115, 50, 112, -100, -136, 16, -370, 154, 175, -4, 34, 7, 87, -170, 50, 38, -105, 32, -173, -161, -68, -23, -128, -66, -80, -66, 87, 15, 36, 213, -6, 19, -16, 132, -65, 110, -128, 96, -333, -57, -21, 42, 82, 99, -70, 103, -65, -23, -53, -147, -137, -128, 19, 114, -228, -24, -106, -38, -26, -115, -48, 12, -167, -136, -91, -391, -158, -290, -165, 136, -159, 47, -176, 80, 28, -61, -1, -112, 95, 118, -196, -27, 9, -110, -8, -18, 5, -2, -186, -165, 21, -24, -23, 7, 92, -74, 125, -230, 73, 45, -181, 177, -118, 7, -14, 95, -72, -8, -24, 198, -76, -24, -85, -283, 35, 40, 23, 114, 199, -39, -54, 119, 43, -22, 90, -129, -100, 36, -37, -25, -160, -6, 35, -25, -20, -47, 59, -128, 49, 68, 18, 85, -151, -66, -91, -98, -58, 5, -14, -193, -144, 85, 46, -43, 61, -27, -67, 150, 121, -153, -220, -71, -120, -68, -42, -6, 60, -16, 81, -18, -128, 148, -42, -273, -76, 9, 52, -259, 265, -77, -77}
+, {90, 145, -31, 132, -16, -56, 191, 3, 144, -22, 96, 437, -94, 148, 205, -87, -82, -260, -192, 78, -190, -129, 167, -50, 64, -80, -9, 257, -223, 95, 409, -112, -275, -69, -170, -147, -84, -17, -112, 105, -207, -198, 216, -110, 39, -87, 87, 52, 26, 59, 82, -136, -16, -56, -99, -74, -134, -40, -115, 113, -20, 88, -177, -45, 35, -3, -14, -205, 42, -68, -18, 252, -9, 60, 325, 115, 49, 68, 334, 56, -122, -46, 20, -158, -99, 39, 10, 21, -27, -3, 139, 84, -162, -19, 109, -41, 46, 118, -40, -117, -1, -66, 34, 18, -94, -137, -90, 164, 78, 195, 163, -86, -160, -45, -245, -108, -63, -26, -244, -140, 53, 32, -288, -186, -19, -6, -338, -98, -118, -147, -426, 186, -226, -37, 46, 90, -604, -20, -298, -159, 63, -32, -272, -128, -187, 66, -59, -52, 139, -129, 108, 80, -595, -3, 125, -93, 234, -114, 5, 106, -95, -1, 136, -29, 118, -283, 138, -29, 22, -219, 101, -218, -358, -336, -16, 92, -22, 22, 107, -28, 399, -104, -75, -90, 51, -246, -89, 53, -154, 37, -240, 127, -51, -53, -190, -92, -93, -47, 11, 86, 156, 48, -79, 112, 73, 5, 40, -137, -19, -129, 42, -61, -4, 11, -227, 137, 101, 79, -54, -317, 30, -367, -481, -111, 12, -191, 64, 44, 36, 119, 31, 75, 50, -29, 216, -239, -81, -333, -302, 18, 62, -142, -145, -83, 103, -66, -5, -110, -114, -121, 10, -86, 68, -54, 109, -134, 62, -79, -21, 46, 41, 157, -50, -77, 16, -145, -53, -275, 22, -100, -180, -20, 292, -287, 187, -79, 105, 232, 105, 0, 39, 60, -134, -263, -367, -290, -221, -18, -36, -296, -142, -114, -60, 113, 33, 64, 79, 5, -14, -100, -6, -213, -13, -144, 48, -117, -78, -11, 83, 21, -140, 54, 32, 79, 3, -250, -45, -380, -103, -43, 1, -205, -78, -62, 15, 69, 85, -54, 134, 101, 33, -12, -86, -241, 21, -30, 44, -172, -101, 138, -3, -16, 63, 47, -54, -75, -112, -47, 69, 111, 47, -138, 48, -113, -167, 49, 31, 141, -16, 114, -7, 214, -76, -157, 190, 5, -79, -641, 248, -335, 43, 127, 143, 100, -220, 132, 94, 123, -42, -153, 14, -112, 51, -109, 29, -180, 84, -26, 105, 31, -99, 52, 187, -9, -9, -2, -2, -110, 6, -111, -80, -79, 63, -126, 37, 1, 43, 56, 86, 40, -31, -56, -59, -118, -46, -89, 82, -5, 55, 49, 75, 2, 79, 140, 195, 84, -19, -32, 123, -16, 119, 43, -17, 23, -113, 30, -70, 55, 42, 45, 33, 34, -85, -130, -40, 122, 4, -155, -7, -369, -106, 19, -232, 91, -61, -116, -13, -29, -157, -336, 201, -308, 27, -445, 263, -204, -66, 81, -115, 80, -255, 8, 17, 64, -80, -157, -8, 27, 32, -162, 9, -69, 44, -25, -70, -9, 46, -82, 96, 25, 52, 66, 31, 92, 163, -144, -43, -246, -82, -18, 15, -7, 82, 5, 229, -7, 34, -24, -202, 6, -2, 84, 38, 113, 105, 15, 82, 45, -55, 19, 221, 43, 36, 33, 62, -103, -35, 52, -68, 108, -110, 61, 4, -21, 61, -37, -25, -246, -65, -101, 81, -106, -34, -61, -366, 35, -58, -113, -4, 50, -35, 75, -73, 110, -169, -181, 61, -4, -131, -253, -37, 18, -95, 82, 96, -73, -178, 67, -358, 217, 23, 24, 10, -65, -84, -210}
+, {54, 41, 141, 54, -3, -137, 12, 2, -41, 79, -27, 97, -18, -10, -113, 61, 112, 6, 70, -41, -76, -40, 98, -164, -47, -39, 162, -146, 44, 23, 83, 85, 119, 25, 113, -225, 223, -124, -104, 104, -213, 23, 287, 64, -22, 12, 263, 267, -307, 8, 101, -202, 142, -348, -99, -36, -7, -162, 110, 38, -163, 43, -118, 47, -66, -106, -26, -363, -26, -40, -200, -117, 14, -188, 98, 24, -102, 8, 14, -140, -232, -312, -297, -327, -115, 31, -390, -107, -274, -122, 11, -192, -230, -261, 106, -221, 41, 119, 205, 111, 234, 76, 226, 143, 44, 45, 61, 132, 108, 87, 443, 211, -9, 59, 89, 159, 45, 7, 91, -175, -74, 56, 74, 293, 49, 289, 307, 161, -63, 129, 96, -108, 119, -152, -20, 67, 4, -149, 77, 158, -71, 238, -12, 62, 191, -55, 77, -54, 166, -173, -7, -28, 204, -186, -5, -215, -119, -6, -277, 6, -56, -16, 2, -71, 32, -129, -40, 24, 43, -27, -17, 60, -228, 78, -117, -21, -48, 18, 81, -71, -157, -158, -132, -52, 77, -29, -165, -73, -110, -35, -401, -97, -98, 227, -129, 235, -80, 16, 422, -136, -110, -44, 178, 53, -30, 155, 339, 297, 127, 86, -212, 238, -177, -16, 88, 147, 42, 85, -177, 79, 204, 105, -99, -142, 102, 19, -173, 194, -68, 252, -26, -36, 167, 133, -54, -155, 290, -124, 19, -298, -2, -286, -75, 98, 142, -55, -168, 87, -17, -17, 264, -14, 17, -79, 127, 36, 73, 130, 27, -14, 154, 14, -28, -21, -24, -317, 17, -52, -16, 124, 153, 81, 53, -110, -78, 73, 111, -36, -113, 1, 12, -102, 16, -128, -287, 31, -8, -15, -39, -187, 4, 136, -135, 34, 47, 32, 64, 163, -81, -186, -154, -123, -44, 42, 169, -165, 23, 99, -64, 78, 25, 35, 224, -84, -23, -89, -106, -87, 48, -249, 97, -128, -233, 41, 5, 43, -209, -258, 322, -304, -48, 61, 48, 145, -89, -248, -68, 6, 16, -249, 118, 50, -270, -148, -126, 249, -15, 38, -148, 81, -26, 34, -47, 169, -17, -122, 95, -26, -209, 95, -38, -78, 36, 122, 3, 161, -102, -37, -116, 132, 191, 113, 103, 35, -11, -133, 49, 259, -238, -127, 27, 26, -173, 42, 185, -207, 118, -75, -80, 61, -63, -16, 164, 101, -72, -63, -94, -20, -147, -146, 15, 22, -31, 45, -54, -38, -174, -134, -70, -93, -88, -31, 108, -54, -123, -32, -103, 70, 7, -469, 70, 95, -283, -179, -84, 103, -101, -92, 59, -82, -144, -20, -31, 78, 19, 32, 38, 28, -85, -61, 13, 87, -59, -39, -123, -66, 2, 109, 18, -51, 10, 36, -21, 58, 96, -1, -84, 4, 36, 70, -111, -51, 188, 116, -1, -147, 19, 0, 62, 5, -86, 132, 21, 65, 178, -31, -22, -212, 133, -13, -35, 148, 75, -6, 151, 34, 91, 130, -32, 80, -25, -179, 179, -169, -159, 292, 138, 127, 404, -58, 177, 105, -44, -23, 73, 185, 15, 58, 123, -109, -12, 69, -29, 134, 234, 52, -13, 77, 40, 60, 15, 54, -11, -44, -59, -169, 5, -49, 10, -49, -49, 14, 35, -77, 35, 166, 17, 101, -88, -23, 63, -50, -18, -71, -37, -67, -30, -38, -89, 37, -96, -35, -17, 151, -35, -16, 131, -59, -18, -77, -297, 108, -203, 78, -22, -17, -159, 1, -120, 4, -52, -82, 142, -165, 43, -153}
+, {128, 37, 274, 104, -74, 1, 49, 18, -37, -75, 0, 25, -5, -96, -57, 4, -101, 20, 33, -50, -91, 88, 54, 68, -92, -17, -80, 47, 86, 100, -158, -185, -58, -21, 72, -115, 41, -24, -39, 138, -57, -87, 2, 131, -42, 34, -197, 18, -102, 37, -23, -304, -171, -57, -136, 54, -42, 4, 43, 5, -123, 9, 32, -104, -38, 10, -105, -85, -174, 111, -83, 93, -68, 34, 3, 34, 15, -25, -85, -63, -20, -10, 52, 53, 65, -16, -75, 24, -5, 18, -26, -154, -145, -64, 20, -18, -20, -16, 199, 50, 123, -26, 22, 159, -120, 21, -152, -64, 7, -108, -86, 19, 197, 130, 240, 51, 51, -25, -112, -23, -19, -37, 88, 107, -53, 10, 22, 86, 41, 96, 95, -38, 89, 4, -1, 27, -46, -45, 118, -5, -20, 58, 86, 76, 5, 92, -53, -25, -64, -12, 48, -65, 108, -64, -53, 0, -65, -68, -26, 15, -38, 43, -13, 117, -54, -66, 94, 6, 36, 35, -1, 88, 57, 170, 162, -26, -332, -24, -73, 84, -78, 36, -46, 79, -44, -106, 163, -54, 70, -49, 162, -12, 26, -366, 9, 53, -48, -37, 180, -26, 32, -5, -22, 107, -93, -66, 149, -50, 140, 3, -185, 78, -116, 0, -80, -26, 61, -8, -46, 115, 142, 140, 187, 193, 51, -71, 30, 45, 45, 44, -78, 26, 128, 101, -110, 65, 98, -92, -69, -74, 32, 79, -1, 50, -50, 62, 78, -65, -20, -10, -215, 91, -127, -67, -77, 66, -56, 92, 43, -20, -12, -170, 54, -31, 9, 15, 23, 158, 93, 44, 257, 53, -144, 5, -41, -21, -76, 24, 133, -127, -49, -144, 85, 165, 3, 23, 157, -100, 13, -147, 84, -72, -39, -223, 14, 162, 41, -154, -139, 22, -246, 27, 56, -178, 82, -290, -139, -129, 32, 93, 24, 103, -15, -71, 22, 37, -29, -12, 50, -159, 42, 72, 71, -17, 37, 56, 207, 15, 48, -50, 109, 104, 121, 204, 361, 20, -207, 82, -89, 55, -42, 15, 69, 46, 74, -109, 164, 24, 45, 74, 99, 77, 27, 74, 117, -47, -46, -111, -79, 47, 75, -44, 14, 92, -148, 100, 185, -8, -99, -30, 68, -133, 73, 128, -198, -121, 53, -187, -82, -59, 65, -47, -171, -114, 92, 302, 331, -59, -2, -219, -17, -299, 90, -131, -151, 35, 85, 131, 39, 248, -397, 522, 6, -138, -366, -73, -132, -258, -28, -364, -118, 74, 109, 275, 147, 21, -64, 245, -127, -29, -302, -126, -7, -198, 93, -50, -3, 175, 304, 266, 180, -100, 0, 145, -135, -2, -209, 64, -120, 49, 121, 31, 46, 44, 127, 19, -187, 39, 1, 12, -28, 31, 100, 95, -131, 130, 46, 15, 0, -184, 35, -65, -175, -134, 179, -76, 72, -82, 28, 95, -223, -23, -41, 23, -167, -499, -159, -221, -272, 17, 137, 325, 119, 41, 513, -126, 8, 103, 44, 98, 62, -182, 352, -165, -84, 566, 35, 573, 253, 210, 24, 76, 50, -189, -109, -5, -86, -20, 543, -89, -52, 23, -12, 98, 58, 199, -50, -7, 12, 61, 4, 440, -92, -130, 427, -121, -39, -4, 163, 30, 50, 87, -60, 246, -42, 11, 3, 319, -59, -109, 236, -171, -32, 14, 125, 38, 69, -20, -34, 212, -110, 15, -22, 279, -81, -61, 3, -156, -131, -102, 329, -128, 127, 162, 155, 72, 23, -17, -15, 172, 198, -40, -76, -197, 3, -45}
+, {219, -3, 98, 101, 161, -40, -105, 64, 70, 171, 118, -41, 110, -80, -124, 105, 69, -92, 208, 115, 239, 63, 195, 159, 62, 106, 251, 118, -1, 39, -174, 24, 82, 38, 63, -1, 109, -73, 61, 39, 3, -60, -30, -13, 10, 49, 309, 82, -80, 7, 20, -79, 2, -149, 152, 30, -36, -31, 127, -47, -11, -41, -5, 1, -71, 32, 75, 47, 20, -107, 160, -41, 120, -50, 82, -17, -92, -7, 92, 67, -3, -91, 24, -25, -74, -140, 52, -40, -45, -11, 89, -68, 41, -45, 222, -129, 259, -68, 60, 159, 64, 43, 32, 229, 175, 147, 31, -28, -40, -94, 90, 202, -11, -34, 85, -16, 219, 46, -12, 37, 109, -9, 155, 162, -73, -4, 424, 96, -3, 69, 90, -85, 95, -39, 5, -33, -93, -79, 141, 93, -62, 94, 114, 74, -13, 59, 25, 16, 14, -17, 127, -44, -12, -95, 42, 123, 11, 220, 122, 91, -135, 5, -89, 12, -56, -1, 126, -3, -62, -17, -54, 121, 30, 85, 173, 70, -111, -112, 28, 16, -284, 148, 2, 7, -71, -60, -122, -180, 47, -92, -37, -96, 32, -159, -179, 258, 74, -114, 123, 8, 53, -110, 10, 59, -232, -1, 121, 59, -79, -59, -598, 177, -351, 110, 84, -52, -130, -173, -86, 76, -48, 271, 163, -329, 86, 19, -191, 165, -92, 53, 234, 23, 93, -77, -15, 99, 327, 61, 82, -159, 164, 44, -42, -78, -234, 120, 82, 43, 173, 89, 127, 150, 186, 41, 90, 26, 57, 76, -111, -31, -36, 38, -63, -61, -67, -96, -33, 105, -28, 56, 40, -146, -141, -44, -299, -139, -280, 64, -144, -177, -120, -210, 130, 54, -43, 74, -19, -292, -118, 575, 156, 192, -236, -260, -38, -405, -2, -550, -278, 170, 81, 343, 138, 34, -169, 328, -114, -194, -404, -29, 74, -364, -193, -172, -199, 119, 34, 415, 128, -126, -175, 189, -180, -168, -121, 242, -49, -256, -81, -104, -64, 51, 259, 127, -60, -13, 19, 130, 33, 11, 47, -65, -8, -184, 247, 226, 66, 49, -47, 153, 154, 54, 14, -50, 6, -53, 126, -79, -99, -164, -123, -99, -131, 2, 127, 133, -91, 39, -76, 116, -8, -229, -32, 32, 109, -104, -115, 139, -336, -76, -138, 86, -331, 57, 244, 155, 330, -10, -50, -129, 205, -73, 56, 41, -49, -225, -34, -178, 58, 383, 58, 224, 17, -16, 116, -96, 31, -120, 108, -20, -81, -97, 103, 84, 15, 160, -163, 292, 114, -59, -21, 47, -15, -260, 36, -41, -115, 87, 86, 57, 139, 86, 49, 128, 33, -66, 62, -120, 59, -20, 8, 22, 148, -38, 95, 5, 31, 116, -77, 131, -4, 64, 17, -1, -15, 116, -14, 160, 11, -15, -117, 271, 124, 20, -37, 234, 109, 43, 246, 111, 13, 39, -1, 190, 226, 38, -27, 101, 162, 201, 372, 100, 55, 88, 162, 33, 7, 185, 75, 62, 115, 6, 164, 91, -67, 212, 68, 105, 287, 250, 47, -19, -74, 32, 19, 46, -8, 31, 112, -86, -26, -67, 36, 103, 161, 114, -59, 131, 3, 51, 102, 78, -57, -2, 290, -27, 20, -11, 31, 112, -124, 59, -133, -20, 34, 136, -2, 80, 64, 16, -48, 41, 18, -22, 70, 72, 23, -16, 2, -75, -1, 107, 12, -61, 86, -81, 59, -3, -40, 36, 188, 56, -46, -55, 47, -19, -13, 42, -152, 118, 187, 163, 23, 22, -54, 6}
+, {-73, 30, 97, 141, 36, -18, 315, 10, 5, 73, -57, 248, -71, 82, 77, 21, 296, -1, 142, 261, 81, -6, -38, 203, 98, 93, 131, 189, -79, 39, -54, 18, 54, -44, 51, 273, 10, 61, -6, 10, 141, -51, 85, 36, -11, -18, 59, 103, 175, -40, 32, 206, 66, 47, 149, -254, -26, 83, 65, -141, -3, -33, 251, 39, 16, -5, 48, 85, 92, 148, 58, -112, 55, 45, 80, -109, -63, -29, -52, 178, -262, -29, 37, -54, -161, -101, 60, 45, -65, -31, 111, -93, -204, 0, 253, -54, 69, 24, 326, 152, 67, 48, 64, 207, 36, -17, -140, 141, 117, 117, -79, 39, -55, -7, 22, -197, 159, -66, -34, 98, -50, 13, 102, 63, -99, 82, 20, 101, 46, 63, 66, -147, 120, 21, -74, -116, -2, -75, -230, -94, 72, 173, -282, 22, 25, 86, -37, 70, -59, -30, 56, -24, -27, 30, -131, 13, 123, 12, 23, 13, -81, 22, -50, -27, 28, -221, 42, 11, -112, 41, -24, 10, -12, 12, 210, 19, -21, 66, 0, -2, -15, 39, 140, -78, -19, -98, 116, 49, 41, 54, 3, 182, -87, 54, 191, 37, 244, 25, 162, 253, -18, -54, 98, 91, -8, 85, 118, 174, 204, 130, 14, -59, 34, -24, -3, -2, 178, -14, -54, -65, -112, -109, -69, -22, 155, -10, -26, 85, 59, 138, 21, 51, 289, 162, -81, -35, 58, -26, -45, -164, -155, 64, 29, -107, 42, -84, -16, 124, 56, 55, 119, 78, 231, -47, 61, 52, -27, 277, 74, -72, 144, -424, 51, 65, -26, -175, 159, 45, -77, 169, 146, 160, 14, 37, 88, -92, 146, 87, -209, -14, 20, -381, 37, -93, -247, 89, -132, -17, -149, 54, 5, 138, 22, 163, 61, 15, -64, 52, 76, 15, 179, 53, 115, 208, 77, -114, 53, 137, 11, -49, -53, 47, 501, -68, -4, -45, -282, -121, -103, -143, 118, -316, -129, -66, 83, 10, -404, -161, 187, -115, -146, 69, 33, 27, -97, -303, 1, -193, -171, -320, -113, 42, -156, -48, -148, 86, -37, 152, 42, 165, -124, -182, 52, 6, 22, -3, 108, 127, -166, -2, 32, -61, 83, -91, -86, -9, -319, -34, 280, -481, 220, 191, 112, 67, -163, -44, 109, -29, -291, -645, -216, -474, -228, -58, 1, -249, -62, 73, 192, 19, 117, 72, 63, 202, 163, 14, -96, 101, 6, 88, 259, -46, 145, -40, 110, -141, -143, 43, 168, -75, -30, -102, -136, -73, -31, 6, -98, 1, 22, -342, 145, 35, -132, -121, 122, -10, 56, -325, 22, -187, -27, -36, -56, 172, -40, 11, 4, 191, -81, -45, -25, 122, -21, -196, -49, -61, 69, 81, -41, -130, -122, 170, -219, 142, 81, -130, -16, 205, -98, -193, 216, -273, 125, -173, 47, -277, -267, 114, -21, 115, -298, -42, -30, 105, -220, -283, 81, -194, -23, -261, -142, 243, -15, -96, 254, -117, -92, -86, -54, -44, 4, 22, 346, 134, -4, 109, -57, 177, 237, -34, 73, -18, -24, 0, 177, 119, -33, -17, 3, 56, -111, 131, 20, 157, 275, -8, -83, 78, -13, 71, -37, 46, 23, -25, -10, 14, -77, 55, -103, 227, -75, 37, 53, 11, 11, 101, 16, 151, -55, 62, 39, 60, 13, -68, -104, -193, 37, 157, 69, 80, -226, -63, -72, 90, -165, -90, 34, -243, -162, -344, -195, -24, -161, -144, -167, -8, -225, -34, -66, 48, -247, -129, -7, -53, -219, -343}
+, {-56, -49, -94, 95, -2, -40, 123, -11, 48, 31, 31, 93, -68, -64, -32, -63, -64, -6, 174, 160, 23, 95, -70, 319, 32, -208, -99, 5, 4, -25, -34, -124, 127, -44, 19, 13, 82, 199, -337, 151, 79, 23, -142, -130, -12, 26, -207, -189, 258, -65, 8, 335, -123, 188, 113, 29, 73, 107, -59, -69, 14, -104, 105, -7, 113, -57, 17, 274, -82, 40, 178, 63, 109, 4, 8, -141, 18, -22, 75, -9, 99, -28, 82, 149, -68, -52, 153, 178, -39, 226, 128, -169, 47, -34, 66, -69, -149, -115, -225, -93, -20, -24, -214, -105, -134, -52, -124, -98, -40, -79, -314, -214, 105, 142, 286, -126, 218, 58, -244, 256, 8, -61, -91, -421, 49, -123, -273, 67, 157, -26, 65, -56, 178, 233, 64, 5, 12, -2, 63, -26, 20, -143, 62, 74, -53, -38, -91, 139, -24, -305, 173, 66, 11, -64, 103, 112, -97, 141, 234, -30, -295, 104, -251, -12, -94, 103, 132, -83, -199, -51, 22, -3, 258, -75, 210, 39, -131, 114, -74, -93, 61, -10, 235, -23, -203, -123, 55, 37, 202, 161, 202, 162, 0, -201, 71, -119, -68, 76, -257, -161, 15, -49, -143, -143, -52, -140, -273, -168, 32, -246, 15, 3, 106, 8, 36, 164, 120, 147, -56, 86, -258, -61, -18, -28, 56, -134, 43, 60, -62, -10, 36, 49, 135, 48, -11, 62, -78, -25, -55, -17, 44, 109, 22, -208, -17, 0, -18, -314, 183, -275, 86, 164, -16, 140, 245, 82, -420, 51, -46, -634, 65, -189, -117, -130, -163, -403, 161, 119, -77, -63, -32, 137, -31, 55, -52, -431, 165, -410, -163, -11, -378, -128, 352, 103, 62, 160, 24, 311, 19, -217, -57, -197, -81, 15, 114, 81, -18, -27, 105, -98, -192, -252, 19, -57, 71, -105, 127, 8, 71, -53, 16, 43, 233, -171, 40, 12, -154, 110, 76, -54, -104, -15, 76, -308, -88, 76, -184, -245, 297, -269, 42, 22, -45, 126, -30, -135, 224, 118, 62, -97, 76, -332, -106, -122, 233, -32, -19, 2, -184, 96, -87, -18, -65, -6, 43, -601, 128, -57, -207, -35, -66, -232, 54, -26, -54, 40, -368, 37, 64, -184, 72, -19, 63, -324, -98, 51, -133, -201, -48, -84, -401, 26, -113, -3, -83, 266, 284, -43, 56, -118, -21, -160, -45, -138, -45, -4, -95, 66, 5, -48, -74, 132, -73, -90, -120, -108, -15, -87, 110, -166, -45, 78, -16, 207, 50, -15, -193, 135, 25, -472, -119, 17, -23, -322, 122, -172, -61, -41, 160, 28, 71, 78, 79, -34, 81, -14, 120, 19, -28, -208, 108, 77, 4, -53, -86, 36, 6, 21, -64, 97, -13, -22, -87, -85, 41, -28, 4, 3, -16, -34, -179, 21, 106, 43, -90, 22, 7, 68, 1, -36, -106, 116, -11, 174, -4, 5, -91, 35, -44, 115, 176, -93, -47, -5, -111, -21, -114, -124, 92, 1, -90, -87, -59, -63, -30, -88, -104, 70, -105, -33, -149, 52, 47, -39, 29, -34, -80, 106, 80, 50, -58, 11, -157, 165, 17, -128, -66, -113, -8, -91, -152, -54, 5, 19, 84, -20, 3, 43, 127, 78, -34, 65, -32, -163, -11, 102, -37, -52, 53, 0, -25, 81, 25, 18, -133, -75, -26, -12, -115, -95, -57, 45, -110, 150, 16, 54, 6, -14, -35, -18, -104, -111, -27, 86, -155, -94, -23, 216, -47, -12, -14, 16, 68, 2, -71, -217}
+, {26, -55, -32, -5, 43, -23, -30, 43, -3, -4, -17, -30, -38, 8, -49, 0, -39, 12, -57, -4, -49, 12, 16, -13, 8, -2, 32, 38, -4, -6, 21, -31, -17, 19, -60, -33, -29, -44, -45, -32, -39, -48, 29, -25, -15, 9, -40, 14, -43, 10, -38, 10, -22, -31, -27, -8, 24, 30, -48, -40, 19, -43, -15, -58, -2, -54, -1, -31, -11, 28, -31, 11, 27, -7, -37, 15, -21, -26, -22, 9, -22, -21, 46, 11, -34, -73, 15, 45, 23, 2, -5, -36, -46, -54, 0, -46, -6, -43, 37, -11, -30, -21, 21, 47, -15, 37, 20, -65, -2, 19, 22, 37, -6, -13, 23, -20, 32, -13, -35, -50, -24, 39, -61, 47, -29, 19, -52, -27, 4, 7, -30, -17, -4, -8, -40, 7, 42, -29, -47, -50, 0, 4, 19, -60, -42, 28, -47, -1, -20, -39, -19, -60, -41, 18, -21, -36, -16, -22, -36, 9, -11, -3, -52, -40, 21, 18, -18, -1, -56, -28, -60, -5, -11, -11, -25, 34, 21, -3, 25, 24, -38, -32, 14, -44, -7, 5, -8, 18, 14, 2, -23, 34, 22, 1, -27, -40, -37, -44, -21, 0, -42, 4, -18, -13, 4, -46, -16, 47, 10, -34, 16, 36, 9, 0, -9, -54, -15, -13, -38, -2, -27, 0, -38, -5, -32, -38, -62, -46, 25, -65, -33, -4, -49, -9, 30, -34, 8, -33, -35, -30, -35, 1, -30, -59, -9, 11, -23, 16, -19, -24, -21, -58, -51, -46, 33, -3, -51, -25, -39, -71, 5, -48, -67, -21, 4, 33, -57, -48, -21, -44, 16, -52, -45, -18, -27, -35, 7, 0, 25, -44, -70, -37, -22, -29, -34, -38, -75, 28, -13, -48, 19, -17, -29, -65, -3, 26, -34, -26, 44, -61, -64, -18, -12, 45, 20, -19, 8, -21, 6, -26, -39, -39, -20, 7, -64, -36, 1, -36, -26, -21, -43, -44, -16, 14, 2, -14, -35, 10, 32, -4, -38, 2, -23, 29, 7, -8, -25, 23, -66, 24, -5, -47, -28, -70, -23, -29, -36, -29, -68, 29, -22, 31, -8, 39, -51, -33, -57, -63, -11, -2, -10, 34, -54, -33, -45, -51, -6, -26, 23, 7, -28, -13, -15, 18, 32, -32, 5, -28, 6, -59, 23, 29, 13, -18, -23, -20, -47, 31, -45, -75, 32, -35, 35, -15, 1, -43, -23, 11, -37, -46, -28, -9, -45, -50, -16, -32, -25, 30, -21, -5, -43, 24, 19, 19, -55, -5, 7, -17, -60, -26, -47, 10, -57, 5, -25, 14, -6, -38, -30, -40, -32, 19, -43, 5, -11, 30, -25, -13, -28, -35, -56, -61, -35, -53, -8, -49, -32, -8, -37, -22, 19, -54, -21, -14, 12, -36, 20, 14, -47, -17, 20, 1, 30, -21, -37, 6, -21, -11, -21, -26, -43, -5, -42, -7, 30, -41, 5, -15, -54, 15, -22, 16, 3, 26, 28, -16, 12, -39, -25, 8, 14, -7, 11, -50, -71, 22, 32, -59, 28, -4, -23, 28, -34, 7, -9, -16, -26, -25, -27, 4, -35, -10, -24, 10, -20, -9, -3, -29, -59, 18, 10, 25, -16, -39, 16, -10, -58, -34, 22, 40, -14, 20, -3, -20, 6, -16, -20, -46, -53, -27, -26, -33, -17, 3, 33, -4, 34, -16, -42, -4, -20, 43, -13, 38, -10, 30, 4, -30, -10, -37, -38, -10, 29, 30, -27, -50, -46, -23, -37, -44, -37, -75, -10, -12, 29, 19}
+, {-6, 400, 124, -75, 163, -17, 24, 203, 13, -45, 132, 19, 229, 57, 108, 189, 278, 35, 158, 191, -7, -105, -94, -65, 279, 11, 30, 145, 9, 38, 22, 47, 144, -168, -37, 168, -20, 93, -318, 113, 504, 57, -79, 27, -51, -120, 125, -128, 66, -82, 9, 346, 1, 202, 36, -51, 146, 5, -361, -124, 20, -141, 27, -87, 343, 18, -117, 60, 42, 221, 219, 183, 0, 130, 170, -55, 175, -48, -19, 99, 31, 179, 12, 4, 150, 69, 306, 354, 62, 131, 165, -100, 171, -10, 11, 154, 269, 60, 337, -100, 129, 100, 62, 323, 50, 348, 136, 83, -99, 133, 116, 317, 319, -100, 134, 87, 44, 41, -305, 214, 510, -52, 128, -77, -97, 18, -230, -78, 327, -168, 10, 17, -16, 91, -488, 126, 371, -32, -78, -176, -139, -128, -416, -229, 220, -165, -104, 43, 88, 130, -382, -173, 179, 98, -258, -338, 56, -198, -349, -220, 45, -71, 16, 67, -27, 189, -218, -194, 100, 252, -288, -95, 152, -93, -7, -163, 186, -66, -57, 179, -76, -42, 88, 217, 8, -60, 34, -78, 193, -41, -54, -150, 251, 38, -128, -2, 73, 50, -119, 301, 51, -54, 13, -97, 0, -89, -111, -15, 124, 65, 120, -46, 147, -59, -331, 5, 251, -36, -138, -451, -5, -177, -360, -169, 72, -159, 119, 50, 48, 64, -228, -87, 89, 135, -389, -270, 75, -168, -359, -57, -8, 55, -52, 25, -44, 55, -43, 3, 100, 165, -66, -149, -99, 69, -257, -25, 15, 29, 27, 22, 47, 74, -274, 142, 46, 49, 54, -181, -72, -49, -274, 52, -23, 46, 68, -88, -105, -93, -93, -208, 39, -45, -319, 90, -44, 45, -99, -15, -136, 150, -40, -127, -174, -37, 280, 156, -20, -2, -76, -115, 81, -126, 44, -14, 102, -349, -32, 106, 61, 87, 16, 46, -72, 143, -28, -64, -6, -184, 98, -38, 73, -86, 43, 76, 84, 12, 19, 86, 58, 78, 52, -44, 22, -271, -26, 42, 52, -86, -104, -13, 52, 0, 145, 3, -36, -165, -15, 26, -152, -57, 68, 15, 51, -84, 5, 35, -9, 4, 164, 46, 15, 157, -73, 35, -246, -280, 8, 38, 242, 40, 150, -14, 170, 27, 60, -151, 127, -67, -77, -46, 170, -7, 73, 149, -7, 198, -74, 22, -114, 10, 35, -76, 35, -43, 46, -55, -55, 178, -67, 66, -7, -382, -323, 96, 9, 43, 51, 151, -195, 63, -24, 41, -37, -74, 43, 7, 35, -118, -121, 4, 94, 142, 50, 105, 145, 77, 121, -3, -74, -42, 17, -16, 65, -9, -136, 50, 139, -27, 94, 37, 2, -43, 71, -6, 6, -85, 136, 44, -40, -118, -4, 56, 78, 118, 55, 207, 47, -24, 79, 20, 127, -55, 55, 12, 169, 1, -57, -5, 4, 8, -35, 28, -85, -67, -77, 97, 66, 15, 6, -45, -103, 242, 36, 83, -1, -117, -46, -63, 33, 110, -133, 51, 73, 133, 50, -157, 85, -46, -91, -2, -138, 54, 58, 109, -28, -34, -17, -41, -65, 1, -1, -179, 66, -353, 16, 57, 10, 112, -106, -56, 207, -45, -19, 7, -147, -68, 37, -172, 80, -27, -7, -78, 40, 102, -118, -78, 29, -37, 62, 6, -76, 18, 51, -2, 102, -34, -187, -109, 14, 108, -134, -295, 74, 68, 22, 16, -102, 64, 39, 18, 21, -44, 195, 63, 27, -111, 80, 83, -99, 45, 22, 141, -162, 131, -39, 68}
+, {-140, 52, -21, -14, 123, -77, -33, 46, -28, -95, 5, -189, 88, -91, 38, -17, -34, 66, 52, -150, 66, -74, 95, 134, 21, -5, -270, 157, -18, -24, 127, -329, 123, -134, -147, -164, -192, -173, -20, 12, 79, -11, -102, 20, -110, -6, 140, -273, 86, -88, -97, 10, 178, 75, -28, 123, -138, -125, -118, -62, 109, -33, 96, -154, 111, -41, -36, 23, 106, 153, -38, 273, -61, 66, 106, 70, 133, -45, 177, 54, 262, -77, -53, 52, 125, -70, 205, 58, 89, -73, 113, -28, -319, -105, 213, 194, -32, 75, 438, -31, 208, 25, 259, 96, -25, 156, 23, 238, -31, 185, 115, 155, -60, 10, 32, -232, 65, 29, 22, 89, 225, -27, 164, -7, -49, 53, 68, -1, 160, -62, 18, -55, 24, 14, -3, -207, 158, -94, 61, 116, -77, 33, 58, -12, 223, -60, -47, 59, 14, 266, -12, -268, 182, 7, -21, -112, 150, -13, -44, -6, 126, 66, 33, 33, -61, 265, -44, -226, 134, 116, -107, -35, 119, 71, 5, -55, 1, 30, -113, -74, 31, 30, 26, 153, -19, 20, 134, 69, -82, 121, 127, 48, 65, 180, 229, 180, 109, -114, 135, 207, -41, 64, 68, -47, 72, 116, 122, 288, -26, -40, 2, -39, 141, -49, 4, -142, 5, 45, -10, 18, -20, -11, 99, 47, 74, 15, 23, -2, 99, -18, 76, -45, 170, 68, -80, 26, -80, -32, 33, 97, 15, 268, 21, -42, 83, 132, 126, 18, -183, 112, -10, 56, -36, 10, 20, 15, -14, 109, 115, 166, 124, 90, -32, 142, 27, 73, -53, 30, -140, 102, -73, 117, -108, 35, 51, -65, 31, 81, -38, -157, 58, -83, -208, 35, 11, 109, -66, -13, 115, 9, -106, 95, 8, -13, 134, 149, 29, 132, 155, 45, 36, 58, 49, -58, 164, 72, -5, 38, 19, -2, 177, 140, 70, 36, 96, 41, 84, 63, 2, 43, -333, 205, -152, -200, -76, -165, 74, -12, 63, -42, -36, -8, 79, 3, 17, 64, 31, -90, -234, -18, 105, 89, -9, 100, -5, -6, -34, -27, -87, -45, -83, 32, 88, 41, -47, 99, -82, 87, 68, 88, 23, 179, -95, -57, -24, -180, 47, 96, 134, 58, 37, 147, -53, 129, 89, -100, 210, 243, 24, -48, 91, -67, 35, 8, 72, 58, 35, 62, -102, -127, 47, 43, -68, 1, -48, -31, -145, 36, -11, 17, -78, -156, -279, 155, -141, -63, -114, -175, 54, -120, -61, 70, 71, 51, -132, -266, 98, -377, -188, 192, -255, 96, -182, 62, 57, 123, -47, -58, 72, -180, -307, -202, 141, -98, -247, 155, 13, 139, -194, 159, 23, 35, -63, -191, 87, -352, -167, -568, -97, -388, -157, 80, -11, 23, 28, -51, -147, 91, 21, 61, 195, -68, 170, -70, -89, 68, -365, -67, -105, 123, -186, -154, -173, 179, 8, 14, 104, -103, 51, -275, -112, 15, 28, 4, 210, -56, 22, 22, -149, 65, -54, -87, 131, 49, -145, 226, 289, -296, -80, 215, -148, 40, 61, 80, 55, 122, -99, -349, -18, -447, -19, -193, 127, -436, 190, 67, 67, 322, -141, -73, 440, -97, -15, -230, -191, -372, -109, -511, 171, -304, 21, -31, 238, 148, -284, -79, 152, 53, 62, 0, -169, 50, -187, -225, 35, -106, 3, -219, 189, 12, -182, -97, 4, -154, 111, -283, -339, -81, -218, 39, 1, 3, -3, -241, 25, -114, 68, -181, -124, 87, -100, -101, -342, 92, -318, 100}
+, {27, -43, -16, 11, 9, -168, -165, 33, 26, -206, -99, -97, -60, -93, 141, -32, -162, -59, 97, -187, -153, -95, -102, 35, -187, -149, -148, -117, -31, 36, 111, -150, -68, -100, -135, -187, -189, 38, -149, 130, -74, -221, -255, 53, 74, -49, 66, -281, 72, -26, -81, -245, 21, 124, -178, 166, -36, -70, 218, 40, -8, 9, -70, 13, 60, 102, 3, -120, 112, 87, -59, 56, 91, -30, -26, 89, 35, -26, -1, 3, 401, 31, -48, 140, 207, -147, -68, 111, -30, -51, -235, 75, 369, -58, 112, 128, 16, -6, 67, -129, -233, -76, -151, -37, -200, 63, -106, -254, 94, 23, -92, 35, -102, -73, -165, 77, -84, 3, -113, -190, -99, -9, -280, -199, 56, -114, -364, -88, 59, -29, -33, 137, -349, -86, 107, 118, 191, -37, -377, -109, 21, -6, -1, -92, 3, 34, 37, -60, -121, 108, -31, 113, 20, 88, 94, -79, -36, -35, -76, -48, 231, -27, 36, -129, 19, 118, -1, 48, 39, 67, 72, -91, -175, 12, -197, -18, 34, -13, 27, 22, 211, -4, -76, 0, -29, 116, -217, 21, 144, -34, -184, -7, -94, -14, 18, -45, -3, 70, -120, 77, 71, 64, -16, -6, 29, 37, -36, -16, 55, -2, 206, 11, 113, 75, -182, 51, 147, 43, 33, -541, -6, -361, -440, -96, 46, -182, 222, -24, 78, 20, -23, 31, -15, 37, 101, -125, -386, -52, -159, -67, 57, -165, 0, -183, -137, 70, -335, -228, -282, -87, -15, -88, 30, 56, -244, -115, 138, -309, 70, 52, 58, 209, 35, -62, 99, 160, -248, -213, 66, -184, -382, -115, 319, -195, 10, 66, 14, -16, 196, 70, 76, 158, -9, -19, -64, 24, 27, -82, -217, 88, -95, -187, 127, -117, 91, -171, 77, 73, -29, -68, 155, -226, -111, -42, 11, -39, 60, -177, 151, -88, -133, 182, -368, 77, 144, 4, -195, -85, 11, 251, -119, 36, 229, -136, 37, -291, 116, -4, -152, -283, 97, 107, -430, -40, 32, 158, -52, -87, -43, 43, -90, -245, 161, 45, -147, -256, -132, 54, -304, -211, 17, 51, 69, -411, -39, 129, -62, -34, 59, 204, -18, 217, 86, -40, 172, -327, 86, -205, -42, 81, -14, -209, -125, -4, -94, -92, -5, 176, 205, 202, 225, -23, 41, -189, 81, -79, -257, 8, 9, 123, 128, -1, -125, 39, 44, 115, 78, -56, 24, -57, 21, -26, 27, 159, -99, 35, 52, 97, -17, 137, 151, 8, 42, -46, 14, -111, -55, -110, -85, 16, -168, 10, 116, 247, -184, 0, -42, -12, -20, -39, 20, -22, -53, -51, -24, -77, -106, -54, -21, 74, 93, -80, 119, -16, -142, 36, -198, 2, -41, -23, 84, -37, 92, 143, 19, -178, 55, -60, -7, -91, -15, 79, -153, -122, 123, -188, -70, -1, -26, 128, 122, -91, 35, -44, -102, -98, 12, 91, 95, 166, 62, -53, -9, -14, -197, -17, -18, -69, -61, -63, -44, -146, 51, -136, -62, -116, 201, -53, -22, 136, -136, 39, 31, -61, 108, 55, 18, -48, -95, 142, -26, 90, 44, -23, -59, 28, -55, 89, 55, -112, -2, 10, -101, -78, -185, -133, 1, 123, 40, -205, -9, -6, 18, 132, -49, -119, 54, -87, 65, -58, -226, -145, -13, -50, 142, 333, 128, -124, 180, 15, -35, -91, 20, -38, 100, -6, -124, 78, 25, 73, 46, 263, 158, -8, 221, -160, 117, -66, 92, 3, -5, -20, -72, -14, -23, 182}
+, {-106, -63, 25, -18, 35, -142, 103, -85, -29, -167, 160, -242, -57, -66, -144, -2, -125, -45, -45, 86, 56, 71, 230, 144, 49, 46, -67, -15, 5, -47, -10, 84, -84, 39, 45, -162, -90, -45, -37, 36, -113, -61, 64, 9, 41, 6, 147, -11, 121, 3, 73, -137, -9, 25, 21, 20, 52, 39, 216, -93, 65, -80, 56, 100, -8, 73, 108, -49, 190, -98, 76, -60, 42, -87, 304, -25, 120, -34, -54, 247, -334, -66, 27, -62, -73, 103, -281, -48, 27, -105, -40, 52, -184, 72, -121, -255, 94, -32, 214, 129, 154, -11, 247, 190, 131, 168, 39, -84, -90, -109, 202, 40, -65, 36, 97, 131, 68, 36, -116, 157, -47, 99, 36, 149, 104, -15, 70, 21, 19, 18, 102, 108, 4, 37, 79, -38, -192, -44, -64, 39, 37, 132, 61, 85, 140, -39, 83, 22, 111, 89, 60, 21, 37, 32, 134, -70, -120, -145, 132, 112, 81, 1, -50, 44, 99, 99, 44, -63, -6, 12, 176, -166, -108, -83, -91, -56, 142, -1, 14, -185, 94, -126, -142, -44, 55, -9, -173, -75, -62, -87, -181, 135, 167, 116, 202, 99, -35, 19, 241, -17, 29, 91, 64, -87, -92, -167, 36, 156, 76, 65, -104, 134, 6, -62, 144, 63, 77, -34, -74, 87, 39, 23, 119, -56, 132, -88, -202, 82, -230, -10, 21, -27, 209, 110, -244, 41, 163, 33, 44, -390, 115, -429, -148, 64, -71, -22, -420, 106, 211, 57, 135, 61, 156, -70, -81, -557, 43, -380, -3, -63, 137, 102, -459, -8, -8, -122, 131, -499, -90, -356, -342, -92, 44, 11, -87, -29, 71, -26, -253, -12, 56, 119, -118, -184, -223, -74, -224, -87, 62, -66, -46, 25, 65, -31, 47, 142, 82, 108, 66, 44, -35, -63, -97, 213, 23, -11, -9, 80, 64, 48, 60, -64, 102, -22, -124, -19, 60, -72, 49, -119, 95, 79, -88, 107, -48, -63, -350, -99, 137, 76, -398, -171, 120, -58, -172, -370, 102, -41, -98, 82, -69, 138, -373, -153, 172, 140, -460, -249, -192, -65, -285, -333, 104, -91, -190, 50, 45, 157, -514, -80, -11, 120, -46, -294, -15, 99, -508, -362, -123, -64, 19, -33, 160, 73, 173, -19, -22, 91, -108, -85, -111, -43, -3, 138, 35, -146, 35, 73, 9, -156, -91, 265, 168, 39, -120, 146, -7, -8, -143, -41, 3, 78, -99, 9, -48, 41, -219, 129, 16, 117, -78, -215, 74, -95, -171, -7, 77, -5, -33, 33, 172, 189, -193, -32, 213, 114, -218, -328, 87, -138, -245, -17, -21, 189, 88, 53, 8, 118, -19, -40, 11, 193, -204, -182, 73, -10, 21, -62, -47, 239, 24, 6, -217, 134, -5, -107, -79, 172, 16, -86, -41, -70, 85, 124, 30, 440, 14, 16, 206, -38, 63, 96, -63, 266, 279, 227, 107, 59, 135, 111, 100, 230, 61, 38, 205, 158, 163, 299, 151, 120, 34, 55, 178, -148, 124, 11, 75, -22, -68, 100, 27, 58, 48, -20, 85, 69, 13, 6, 0, -185, 24, -49, -38, -58, 154, 73, -19, 65, 16, 152, 222, -1, 89, -32, -134, -225, 51, -35, 23, 139, 34, -75, 108, -2, 73, 106, -109, 51, 21, 64, -12, 128, 15, 89, -101, 404, 23, -23, 44, -101, 25, 167, -87, -116, 117, 229, 53, 32, 57, 99, 49, -16, -72, 189, -35, -54, 225, 235, -52, -92, 139, 249, -11, 116, 128, 159}
+, {21, -33, 40, -122, -93, -71, 190, -38, 47, 97, -39, 176, 181, 58, 90, 7, -44, -280, -160, -30, -163, -192, -39, -97, 36, -208, -111, 9, -116, -90, 80, 40, 101, -78, -90, -61, -80, 98, -339, -111, 277, -163, -23, -88, 40, -35, -176, -102, 17, -54, 25, 193, -106, 65, 193, 67, 25, 70, -35, -11, 27, -23, -158, -11, -105, -59, -87, 61, -68, 110, 13, 165, -60, -207, -34, 56, -74, -54, -90, -204, 54, 33, -170, -18, 7, -14, -102, 158, -40, 58, -181, 116, 166, -41, 15, 71, -47, -108, -35, -87, -145, -241, -7, -17, -60, -238, -262, 70, -59, 17, 62, -103, -95, 36, 25, -350, -145, -170, -205, -140, -102, -300, -199, -214, 19, -26, -155, -114, 59, -85, 66, -98, 168, 6, 79, 120, 92, -43, -6, -306, -63, -81, -115, -44, 45, -6, 35, 149, 88, -51, -83, 0, 28, 48, -92, -4, 37, 211, 173, 18, -257, 23, -85, -243, -94, 34, 68, -275, -158, 146, 179, 8, -61, 120, 137, -4, -122, 97, 109, 65, 14, -165, 101, 51, -99, 101, 206, 62, 122, 226, 133, 212, 58, -107, -124, 4, 38, -124, -2, -244, -153, -35, -152, 101, -178, -68, 10, -146, -119, 69, 62, -273, 67, -19, -47, 31, 88, -131, -79, 134, 44, -126, -70, 142, -16, -218, -55, -185, 33, 46, -2, -11, -24, 105, 50, 28, -12, -88, -164, -23, 42, 24, 84, 14, 103, -294, -174, 66, 51, -42, 105, 95, -303, 1, 146, -21, -269, -303, -213, -405, -109, -70, -89, -223, -181, -339, 229, 64, 101, 151, -53, 19, -45, -49, -68, -25, 48, -186, 30, 130, -624, -169, 125, 320, 55, 180, 152, 39, -102, 40, -88, -156, -4, 35, 131, 206, 15, -251, -17, -65, 82, 76, 76, -36, -73, 15, 233, -54, 22, -194, 91, 17, -32, -25, 99, 149, -360, 282, 228, 112, 1, -64, -100, -4, 47, 62, -256, 54, 110, -91, 130, -67, -42, 89, -31, -83, 92, -94, 30, 72, 102, -123, -223, -43, 126, -159, -97, 19, -112, -2, -70, -101, 36, -202, -116, -368, -85, 20, -522, -357, -160, -159, -587, -115, -279, -116, -647, -175, -18, -119, -224, -150, -177, -178, -197, -132, -134, -75, -194, 107, -45, 155, -218, -111, -25, 46, 220, -2, -33, -78, 81, -131, 40, -89, -48, 139, 53, 47, 12, -63, 12, 176, -25, -201, 83, -353, 19, -34, 45, -280, 75, 112, 19, 175, -34, 55, -425, 81, -187, -328, -140, 133, 56, -127, -136, 112, -103, 71, 111, 93, 56, 138, 79, -73, 108, 119, 79, -241, -9, -21, 78, -129, 33, 17, -154, -18, -77, 122, -1, 56, 81, -67, 60, 53, 34, -70, 40, -88, -36, -87, -348, 14, -112, 94, -110, -132, -129, -168, -155, 103, -49, -38, -197, -196, -55, 41, 12, -14, 110, -208, -47, 188, -18, -58, -85, -34, 63, -95, 245, 30, 7, -135, 6, -31, -118, -87, -256, 116, 92, -8, -158, 24, -23, -57, 16, -92, -48, -95, 119, -7, -19, -30, -203, 102, 139, -58, -92, -61, 103, 102, -93, -29, 82, 11, 105, 96, 25, -12, -28, 148, -79, -2, -24, 58, 3, 114, 167, 43, 65, 43, -91, 13, 29, 14, 137, -30, -114, 64, -124, -110, 36, -51, -21, 40, 18, 33, 12, 46, 22, 98, -78, 239, 11, -232, -82, 70, 14, -26, -200, -53, -347, -255, -15, -105, -124, -94}
+, {101, 31, 314, 88, -27, 101, 89, 122, 122, 208, 76, -154, 169, -59, -172, 193, 190, 54, 67, 220, -48, -1, 258, -31, 167, 182, 361, 31, -11, -29, 57, 281, 166, 69, -5, 244, 36, 21, 239, -23, 23, 81, 201, -128, 43, -35, 208, 94, 182, 15, 85, 193, 36, 10, 167, 78, -30, 89, 28, -74, 36, -53, -21, 100, 76, -22, 78, 248, -23, 25, 233, 82, 149, 105, 94, -36, -26, -12, -137, 69, 55, 38, -24, 174, 83, 10, 140, 2, 69, 172, -28, 59, -163, -26, -54, -40, 96, -242, -107, 472, -90, -32, 50, -44, 197, 54, 93, -142, -108, -53, 153, -44, -25, -65, -222, -40, 5, -86, -26, -17, -38, -77, 105, 145, -59, -9, 232, 11, -37, 48, 37, 6, 4, -25, 7, 19, 72, -53, 245, -50, 28, -16, 41, -27, -7, -48, -161, -28, 42, -70, 29, 53, 27, -75, 70, 36, 21, 10, 61, 13, 50, 28, -81, 4, -83, 244, 5, -12, 48, -143, -21, 115, 31, 104, 112, -56, -27, -81, -15, -148, -117, 319, -75, -16, -113, 4, -68, 53, -51, 190, 76, -267, -121, 21, -48, -15, -293, -162, 304, -136, 167, -188, -119, 263, -96, 199, 249, -25, -121, 142, -316, -72, -202, -106, 209, -99, -28, -141, -84, 128, -1, 307, 307, -27, -85, 209, -138, -101, -83, 1, 2, 48, -154, -202, 1, 41, 155, 194, -100, 2, -5, 105, 53, -163, -86, -138, -23, -93, 62, 147, -232, 63, 147, 98, -77, 90, -132, 150, -99, 21, -186, -109, 183, 7, -81, -50, -194, 102, 185, 281, 100, 80, -146, 107, -198, -6, -113, -80, 157, 6, -123, 73, 15, -53, 131, 187, 233, 50, 58, 256, 257, 114, 6, -4, 36, -243, 359, -47, -169, 46, 59, 243, -57, 234, -134, 213, -147, -144, -36, 29, 53, -50, -31, -14, -149, -67, 52, 287, -138, 9, -52, 82, -2, 46, -23, 389, 109, 81, -109, 172, -1, -135, 127, -304, -21, -18, -107, 180, 296, 102, 200, -367, 54, 73, 190, 56, 167, 155, 3, -18, 179, 207, -71, 127, 27, -147, 53, -194, -24, -84, -64, -245, -20, 108, 124, 335, 81, 29, -202, 147, -74, -198, 126, -220, -148, 101, -123, -56, 2, 85, -27, 172, -109, 134, 116, 26, 233, 25, -1, -90, -45, -49, 90, -6, -9, -111, -4, -141, 42, 177, 61, -44, -41, -97, 79, 16, -43, 127, -58, 105, 23, -51, 17, -21, -46, 0, -64, -111, 97, -166, 56, -22, 4, 15, 120, -4, 83, 41, -53, -21, 65, -93, 12, -42, 93, -23, 22, -115, 44, -130, 36, 0, 105, -12, -26, 102, 73, 185, -106, 4, 160, -22, -9, 48, -63, -32, 31, 2, -66, -194, -263, -70, 106, 108, 96, 41, 46, 77, 128, 121, 15, 158, -57, 170, -69, -32, -79, 57, -230, -4, 376, 189, 43, 15, 95, -71, 176, 143, 337, 131, 29, 0, -74, -8, -17, 131, -28, 209, -107, -112, -21, -38, -44, -56, 20, -144, -53, 54, -196, 39, -43, 88, -150, 138, 31, -164, 73, -192, 70, 121, -343, -115, 13, 47, 77, 176, 61, -2, -118, 41, -114, 38, -83, -151, 50, 81, -139, 150, 23, 76, 289, 39, 80, -26, -61, 39, -75, 89, -165, 81, 101, 180, -147, -79, -149, -90, 64, 15, 22, 12, -17, -67, -91, 115, -8, 216, -6, 207, -45, -5, -43, -52, 59, -68, -23, -159}
+, {-72, 267, 56, 52, 169, -2, 191, 205, -107, -112, 182, 41, 201, 103, -86, 18, 201, -16, 236, -31, 48, -60, 67, -39, 100, 81, -33, 52, -39, -17, 26, 136, 224, -31, -21, 338, -145, -44, -118, 76, 244, 76, -239, -46, -12, -159, 50, -6, 201, -3, -9, 365, -75, 308, 226, -71, 172, 73, -78, 86, 56, -49, 73, 25, 178, -62, 48, -35, 84, 453, 30, 24, 0, 30, 142, -94, 177, -31, 205, 25, 192, -2, 184, 6, 147, 56, 110, 338, 77, -72, 122, 39, -137, 29, 132, 42, -46, -70, -34, 28, 0, -34, 128, 43, -85, 193, -35, 145, -13, 12, 88, -39, 287, -17, 17, 222, -136, -57, -82, 202, 135, 134, -252, -67, 13, -22, -110, -119, 58, -92, -135, 129, -156, -6, -69, -64, 298, 52, -257, -75, 43, -5, -128, -193, 106, -24, -11, 128, -65, 147, -101, -105, 64, 115, -136, -142, 76, -131, -168, -26, 60, -44, -21, -30, 111, 248, -156, 71, -8, 223, 120, -21, 179, 3, 81, -97, 67, -189, -66, 34, 137, -173, -119, -14, 50, -53, 28, -109, -16, -34, -70, -7, -65, 13, -239, -104, 26, 46, -14, 126, 9, 31, -40, -32, -50, -61, -82, -112, 40, -30, -71, 217, -64, -5, 0, 40, 103, 82, -267, -619, 135, -328, -331, -151, 14, -176, -33, 142, -32, 118, 101, -47, 173, 73, -397, -169, -10, -375, -249, -241, -52, 30, -33, 4, -101, 352, -139, 18, -5, -69, 108, -143, 94, -105, -65, -92, 90, 118, 29, 23, 142, 83, -133, 101, 102, 61, 189, 54, -82, 120, 27, 78, 0, 6, 14, -81, 155, -100, -160, -12, 123, -39, -264, -63, -158, -71, -134, 71, -160, -175, -123, -181, -106, 22, -4, 61, 12, 114, -77, -287, -9, -293, -156, -186, 132, -500, 106, 170, 75, 63, -222, 165, 146, 128, -89, -647, -79, -742, -537, -287, 77, -77, 44, 69, 95, 32, -225, 1, 58, 6, -196, -230, 33, -210, -187, -98, -58, 29, -68, -117, -219, 26, -50, -187, -158, 169, 15, -15, 21, -1, 8, -7, 73, 55, 15, 118, -25, -69, 59, -50, 85, 230, -82, -112, -138, -144, -180, 18, 259, -137, 66, 55, 166, 134, 89, -73, 82, -24, -5, -108, -207, -252, 32, 32, -77, -355, -28, -76, 145, -80, 70, 71, 57, 115, 37, 42, -257, -28, -40, 123, 7, -225, 39, -30, 26, 8, 52, -7, 56, -82, 98, -3, -462, -92, 107, 65, 8, 40, 34, -145, 61, -456, 122, 130, 67, -258, 117, 6, -198, -118, 24, 69, 78, 1, -166, 37, 0, -74, -14, 151, -166, -147, -12, 43, -111, 89, -148, -1, 107, -154, -101, 81, 24, 268, 73, 141, 63, -50, 21, -121, 108, -310, 2, -50, 69, 25, 23, -33, -122, -68, 0, -94, 38, 39, -139, 15, 123, -106, 30, -74, 19, 152, -40, 169, 68, -110, -91, -43, -191, -113, -52, -6, 120, 20, -13, 77, -20, -17, 100, -26, 62, -232, -87, -57, 11, -54, -55, 26, 12, 57, -73, 152, 102, -273, 116, 55, -104, -58, -90, 72, -152, -36, 34, -7, -148, -4, 7, -47, -35, -8, -216, 36, -73, 12, -33, -55, 11, -82, -7, -21, 39, 20, -22, 32, 43, 43, -87, 35, 113, 125, 31, 9, -63, 60, 74, 34, -14, 17, 66, -107, -59, 251, 216, 76, 188, -10, 73, 105, 136, 53, 32, 80, -143, -14, 117, 76}
+, {103, -15, 101, 62, 144, -56, -98, 178, 180, 83, 258, -41, -27, -78, -107, 183, 179, -70, -2, 134, -31, 1, 124, -60, -15, 123, -75, -221, -67, -11, -3, 187, -85, -79, -101, 85, -97, -38, 186, -138, -14, -5, 102, 7, -95, -76, -108, 92, -149, 8, 44, 93, 157, -113, 101, 21, -87, -56, 230, 31, 106, -28, 145, -65, -255, 100, 36, -290, 143, -458, -67, -233, -140, 95, -117, -37, -178, 79, 24, 167, -99, 5, 150, -70, 114, 30, -184, -51, 3, -125, -91, 45, -154, -41, 137, -2, 203, -97, -5, 217, -30, -27, 107, 59, 189, 121, 20, -130, -29, -172, 157, 115, -199, -133, -113, 209, -168, 45, 107, -48, -1, 109, -88, 26, -131, -78, 232, -58, -200, 5, -139, 1, -49, 13, 79, -63, -374, 61, 172, -100, 10, 210, 168, 69, -224, 122, 122, -25, 63, -410, 130, 76, -516, -31, 188, 257, -60, 191, 235, 149, -72, 129, 113, -224, 165, -680, 9, 99, 77, -606, 127, 154, -525, 30, 73, 55, -42, -83, 67, -68, 202, -119, -187, -81, 148, -253, -220, 36, -223, 33, -254, 50, 26, 36, 189, 69, -64, -75, 317, -160, 88, -174, 3, 197, -35, 53, 294, -27, -40, -9, -44, -15, -85, 4, 55, -42, -25, -75, 20, 67, -14, 323, 165, -179, 37, 91, 27, 18, -80, -22, -21, -36, 43, -76, 2, 160, 54, 226, 50, -24, -25, 85, -48, -504, -75, 1, 39, -113, -502, -165, -109, 201, 112, 161, -174, 36, 107, 44, -50, 93, -53, -254, 105, 71, 25, 38, -263, -256, -40, -179, -192, -111, 18, -79, -65, -26, -163, 170, 74, 36, 114, 170, -97, -254, -1, -262, -15, -67, 122, 181, 275, -117, 76, 56, -1, -2, 198, -3, -89, -80, 30, -74, -150, 169, -29, 247, -29, -105, -90, 48, 56, -108, -20, -34, -122, -56, 145, 106, 34, 85, -93, 161, -14, -192, -31, -86, 4, -176, -64, -50, -89, -95, 339, -85, -14, 1, -91, -153, 5, 13, -36, -185, 57, 123, -327, 154, -94, 44, -185, -117, 25, -94, -76, -166, -61, 72, -31, -185, 97, 91, 41, -148, -120, -41, 74, -194, -16, -78, -372, 13, -33, -61, -164, 27, -26, 81, -133, 128, 31, 264, 148, -63, 79, -12, 63, 0, -148, 161, 201, -114, 64, 21, 58, 97, -16, 53, 39, -147, 106, 121, 60, -21, -6, -88, 99, 76, -52, 50, 4, 148, -57, -19, 21, -150, -19, 39, -163, -131, 29, 37, -34, 7, 4, 57, -221, 73, 38, 46, -18, -4, -30, -23, -29, -145, 131, -26, 78, -142, 77, 92, -8, -105, 39, -64, 60, 98, -6, 21, 0, -111, 47, -38, 211, 99, -32, 13, 15, -97, 19, 17, -187, 69, -18, 118, -22, 105, -31, -181, 91, -81, 19, -13, -58, 208, 39, 86, -28, 167, 74, 141, 306, -130, -20, 354, 89, 50, -105, 202, 99, 122, 27, -34, 18, 47, -70, -26, 74, -115, 231, 49, 76, 93, -34, 67, 145, 64, 10, -44, 61, -1, -28, 35, 112, -338, 93, -46, 36, -17, -37, 113, -8, 129, -31, 45, 5, 68, -78, -50, -73, -41, 1, 77, -65, -63, -100, 35, 61, -62, 5, -12, 47, -35, -112, -120, 77, 112, 77, -74, 86, -45, -82, -92, 96, -73, -18, -9, -165, -29, -31, 64, 24, -104, -9, 92, 27, -129, 98, -97, -123, 5, 136, 124, -112, -41, -83, 46}
+, {129, -39, -122, 98, -62, -72, 232, 40, 66, 101, 18, 102, -112, 62, 116, -56, 15, -28, 44, 56, 0, 134, 119, 182, -49, 55, -159, 67, 12, -37, 164, -204, 44, 20, -9, -19, -189, 8, 106, 1, 40, 63, -36, -148, -57, -27, -68, -228, -354, -4, -52, 27, -224, -160, 150, -60, -106, -181, -62, -30, 17, -18, 1, -308, -248, -61, -32, -76, -40, -3, 157, -57, -272, -165, 60, -57, -206, -92, 178, -142, -205, -315, -122, 65, 18, 235, 203, 4, -180, -124, 265, -122, -296, -10, -2, 38, 108, 1, 85, 22, -24, -121, 189, -163, 119, -167, 21, 102, -39, 119, 189, -18, -208, -26, -157, -196, 40, -53, 11, -191, -330, -4, 117, 59, -11, 74, 171, 10, -437, 55, 13, -177, 45, 28, 63, -188, -167, -59, 89, 140, 0, 145, 80, 19, -303, 39, 19, -84, 54, -560, 115, -145, -304, -18, 50, 106, 63, 36, 12, 35, -346, 66, 80, -63, 30, -700, 129, -19, 48, -204, 45, 143, -277, 108, 203, 53, -178, -61, -96, -46, 25, -149, 51, -119, -88, -147, 31, 92, -263, -38, 237, 2, 115, 81, 229, -82, 85, 15, 65, 3, -82, -54, 59, -44, -7, -16, -67, 38, -93, 74, -72, 41, 39, -15, 25, 15, 32, 54, -30, 58, -144, 42, -34, 154, -88, -26, -15, 33, 71, 8, 28, 45, 16, 18, -33, 113, 17, 32, 122, -91, 10, -21, -126, -113, 147, -5, 193, -48, -501, -17, -43, 56, 46, -68, 116, 112, -22, 184, -1, 67, 98, -35, -26, 42, -28, -124, 41, 155, -183, 278, 172, 139, -74, -37, -5, 23, 129, 96, -172, -82, 31, -357, -69, 108, 62, 111, -73, -60, 249, -158, -58, -25, 110, -35, -36, 67, 31, -26, 62, -36, -201, -71, -28, -135, 158, 177, 119, -14, 50, 90, -34, 77, 0, -75, 10, -10, 5, -51, -42, 50, -106, 142, 0, 3, -56, -229, 11, 46, 83, 57, -62, 34, 77, 98, 39, 25, 60, 3, -156, 107, 40, 74, -22, -48, -35, -37, -102, -138, 68, -134, -83, -158, 62, 23, -53, 22, 31, 175, 7, 3, 31, 7, -25, -274, 39, -175, -111, -23, 112, 28, 192, 73, -74, 207, 26, -182, 157, 152, -70, -197, 108, -160, -37, -4, 55, -22, -58, -45, -188, -56, -264, 91, 102, -29, -91, -108, 37, 39, -146, -118, -96, 10, -353, 88, -317, -52, -127, -118, 13, -197, -116, 39, -47, 67, -38, -230, 77, -304, -30, 155, -276, 73, -120, 57, 83, 47, -30, -3, 110, -85, -140, -234, 48, -4, -203, 47, 126, 81, -71, 116, 11, 166, 0, -172, 39, -123, -40, -454, -30, -252, -141, 47, 18, 51, -23, 35, -43, 119, 51, 0, 204, -30, 13, -158, 130, -90, 95, -45, 1, 34, -211, 40, 0, 123, 29, -22, -69, -159, -47, 10, -9, 187, -90, 75, 144, -15, -99, 37, 34, 69, 58, 13, 153, 158, -61, 228, 151, -158, 4, 319, -57, 110, 95, 21, 8, 129, -137, -377, 111, -274, -110, -231, 51, -342, 95, 106, 56, 88, -125, -9, 162, 97, -126, -287, -121, -149, -171, -564, 109, -165, 40, -56, 39, 189, -238, -68, -4, 100, -60, -210, 8, -201, -290, -324, 70, -261, 155, -31, 258, -33, -246, 75, -57, 119, 59, -101, -285, -63, -290, -69, 128, -39, 98, -97, 124, -51, 114, -106, 79, 148, 147, 205, -58, 49, 80, 263}
+, {30, -160, -1, 133, -129, -209, 196, 54, 123, 232, -79, 116, -62, 68, 153, -50, 63, -69, -66, 288, -28, 143, 83, 252, 116, -157, 73, 155, 37, -17, 190, -225, 177, -43, -47, 269, 41, -46, 12, 72, 163, -12, -186, -13, -45, -46, -101, -72, 264, -65, -152, 168, -118, 238, 25, 72, -33, 49, -294, -23, -17, -82, 195, -44, 170, -69, 16, 275, -88, 196, 124, 68, 40, 36, -35, -128, 97, -26, -7, 62, 78, 102, 79, 111, -37, -22, 258, 201, -51, 141, 31, -63, 11, -1, 84, 171, 156, 53, 191, -68, 62, -169, 46, -3, 189, -70, -101, 2, -1, 13, -10, -50, 57, -20, 95, -206, 91, 129, -313, 319, 209, 26, -41, -238, -19, -245, -506, 45, 108, -84, 42, -127, 119, 81, -227, -45, 157, 35, -421, -300, -56, -87, -337, -101, -70, 62, -45, 8, 34, 4, -74, -110, -40, 109, 10, -68, 158, 217, 162, -26, -204, 35, -92, -27, -18, -172, 51, 91, -296, 91, 46, 119, 174, 290, 253, 35, -107, 31, 50, -11, 16, -81, 110, 65, -97, 230, 375, 160, 167, 142, 193, 173, 168, 26, 37, -48, 164, -120, -202, 169, 69, 79, -12, -112, 59, -17, -179, 84, 91, -49, -58, -7, 119, 62, -11, 163, 182, 178, -104, -351, 12, -234, -74, -121, 207, -21, 60, 126, 112, 98, 0, -81, 219, 121, -175, -123, 55, -193, -52, -130, -66, 203, 31, 31, -43, -114, 72, 46, 28, -80, 115, 114, -52, -30, 68, 53, 23, 147, -38, -251, 171, -309, -4, -97, -63, -353, 194, 54, -1, 107, 153, 148, 114, 47, 28, -58, 134, -268, 21, 184, -6, -14, 250, 87, -19, 20, -18, 63, -73, -179, 0, -159, -127, -1, 66, 198, -19, 12, 74, -205, 35, -200, 8, -111, 127, -214, -101, 145, 76, 24, 94, 159, 39, 26, -41, -33, -118, 116, -46, -333, -21, -168, -52, 80, 12, -7, -203, -59, 267, -31, -6, 112, -97, 28, 4, -198, -168, 155, 59, -333, -119, 211, -207, -134, -38, -3, 3, 66, 53, -92, -21, 60, 19, 63, 80, -52, 52, 65, -40, 38, 10, 43, -14, -41, -45, 95, -489, 31, 265, -281, 92, 136, 73, -166, -144, -26, 8, -73, -221, -310, -222, -236, -236, -49, 118, -27, -17, 185, -67, 26, 97, 49, 9, -103, -19, 193, -39, 134, 38, 23, 244, 81, 0, -99, 38, -23, -43, 109, 167, -74, -31, 8, 95, 51, 15, 5, -73, 20, -13, -176, 62, 2, -60, -97, 41, -24, -62, -253, -2, -4, -128, -130, -69, 97, -34, 90, -33, 179, 12, -150, -45, 70, -175, 6, 60, 4, 131, -78, 57, -300, -68, 15, -189, 40, -50, -58, 5, 112, 6, -230, 162, -269, 82, -310, -66, 23, -59, 126, -171, 66, -36, -11, 34, 39, -22, -16, -123, -43, -108, -90, -25, 127, -36, -155, 19, -57, -125, -112, 183, 50, -61, -56, -18, -119, -125, 119, -171, 5, -90, -210, 7, 21, 8, -33, 120, -2, -20, -2, -50, 82, -28, 170, -52, 162, 136, 86, 136, -141, 18, -42, -120, -76, 74, -34, 193, 44, 5, 105, -252, 50, -32, 38, -111, -37, 104, 67, -128, 142, 6, 58, 71, 52, 13, 12, -238, -44, -82, 65, 2, 9, -107, 86, -96, 67, -146, -1, 73, -7, -53, -345, -326, 50, -52, -194, -225, 115, -348, -49, -217, -128, -110, -98, -36, -97, -205, -269}
+, {18, 88, 101, 159, 200, -74, 33, -44, 32, 38, 101, -154, 18, -53, -262, 66, 99, 1, 116, 247, 75, 43, 112, -162, 102, 125, 474, 43, 24, -24, -113, 314, 20, -41, -80, 1, 23, -20, 182, 39, -48, -8, -100, 29, -51, 12, 279, -16, 123, -79, -13, 16, 179, -69, 121, 168, 8, 138, 383, 37, -5, -46, -128, -23, -19, -49, -5, -36, 118, -37, -66, 91, 77, 82, 37, 14, 37, -28, 10, -3, 35, 53, 37, -56, 16, 88, -118, -47, -22, 22, -10, 36, -129, -25, 73, -19, 113, -132, 82, 256, 240, 58, 138, 149, -28, 146, 130, 73, 17, -54, 141, 266, -48, 19, 106, 79, 41, 103, 120, -20, 91, 46, 18, 97, 40, -5, 430, 28, 12, 58, 118, -7, 2, -144, 56, -117, 30, -74, 233, 110, -34, 228, 181, 77, -3, 12, 32, 149, 112, 2, 99, -31, 181, -95, 99, -32, 24, 112, 40, 25, 138, -4, 37, 30, 3, -12, -73, -11, 28, 0, -167, -209, -316, -59, -296, -3, -19, -200, 36, 41, -37, 108, -101, -40, -7, -95, -187, -283, -74, -94, -208, -197, -32, -220, -269, 124, -284, -221, 219, -151, 46, -172, 68, 256, -358, 124, 302, -61, -77, -154, -487, -64, -514, -193, 320, -173, -50, -252, -48, 42, -270, 158, 344, -280, -263, -76, -572, -153, -451, -105, 4, 118, -292, -484, -165, 52, 367, 123, 23, -311, 93, -122, 5, 28, -138, 203, -156, -99, 95, 247, -104, 3, 125, -6, -46, -249, -40, 75, -28, -4, -80, 85, -70, -55, -16, -23, -232, -122, -54, -86, 61, -48, -76, 221, -176, -52, -61, 52, 100, 105, -54, 261, -132, -144, 72, 100, 73, -98, -95, 319, 342, 55, -122, -121, -363, -149, 190, -188, -381, 13, 118, 136, -343, 143, -243, 153, -143, -240, -123, 175, 65, -386, -139, -99, -244, -296, 184, 125, -41, -45, -319, 149, -27, -94, 59, 171, 80, 111, -318, 8, 24, -53, 50, 18, 76, -16, 32, 73, -73, 27, 167, -23, 102, -17, -15, 91, 65, -66, -63, 2, 143, -1, -123, -8, -113, -72, 54, -81, 33, -70, -134, 106, -48, 88, 43, 86, 151, 55, -188, -43, -32, 69, 52, -64, 192, 127, -6, 314, 63, 46, -37, 100, 131, 126, 102, 84, 54, -21, -19, -151, 173, 98, -69, -69, -16, -110, 79, -182, 102, 207, -131, 192, -18, -177, 28, -15, 8, -98, 98, -13, -48, -14, 102, 139, 38, 84, 67, 175, -34, 39, 36, -24, 88, -60, -126, 11, 21, -28, -79, 43, 42, 50, 23, -68, 72, -29, 192, -74, -7, 52, -5, -8, -3, -22, 16, 146, 35, 175, -68, 311, 112, 121, 118, -36, -27, 143, 8, 49, 101, 38, 32, 177, 160, 122, -163, 279, -87, -11, 101, 109, 13, 7, -57, 149, 136, 146, 167, 100, 148, 53, 331, 6, 45, 96, 147, 86, 94, 282, 37, 138, -44, 53, 20, -77, 17, 105, 66, 37, 97, 170, 86, 197, 58, 26, -167, 68, -23, -13, 168, -20, 1, 65, 120, 12, -161, 66, 107, -9, -14, 104, 182, 2, 27, -37, 20, 80, -8, -14, 81, 97, 22, -45, -28, 33, 22, 60, 72, 20, 46, -21, -99, -44, -6, -53, -20, -9, -4, -68, -215, 30, -94, 42, -46, -33, 1, 90, -52, 151, -33, 6, -110, 128, -88, -82, -14, -58, -119, -64, -177, 39, 123, 58, 132, -50, -133, -23}
+, {205, -20, 94, 226, 54, 101, 28, 13, 226, 312, 208, -83, 28, 36, 183, 82, 155, 40, 127, 166, -37, -105, -82, 96, 54, 69, 125, -111, -81, -103, -70, 59, -82, -33, -58, 253, -113, 26, -71, -54, 3, -118, 118, -55, -57, 11, -111, 8, 46, -35, 4, 244, 6, 110, 185, 58, -126, 55, -4, 33, 65, -47, 133, -80, 186, -34, -46, 331, -21, 22, 407, 310, 10, 166, -38, -54, -165, 20, 125, 48, 35, 45, 80, 303, 70, -19, 375, 114, -50, 45, 219, -4, 94, -60, 88, 123, -13, 39, -23, 147, -206, -12, -43, 102, 12, 61, -93, -58, -6, 45, -99, -79, -379, -19, -261, 85, -189, -64, 51, -66, -311, 28, -247, 47, 29, 46, -11, -72, -249, -24, -171, 70, -111, -113, 76, -74, -583, -4, -75, -172, 111, 20, -45, -15, -221, 68, -13, 8, 72, -297, 12, 11, -252, 177, -67, 78, 217, -96, 14, 63, -254, 50, -58, -77, 50, -194, 116, 64, -50, -226, 135, 232, -184, 105, 347, 82, -242, -80, -29, -82, 244, 135, -13, 78, -57, -311, 199, 9, 224, 142, 309, -64, 79, -117, 32, 106, -5, 32, -12, 8, 115, 104, 29, 142, 110, 70, 21, 19, 26, -207, 80, 103, -38, 40, 64, 96, 244, 83, -45, -36, 30, -108, -131, -66, -103, -202, 27, 50, 115, 160, -64, 153, -136, 13, 66, 39, 25, -121, -200, -108, 62, 44, 89, -2, 60, -110, 140, -108, 49, -73, -266, 81, 121, 193, -101, 105, -57, 83, -44, -31, -157, -104, 155, -104, -22, -124, -415, 171, 122, 390, 255, -53, -277, -172, -6, -84, -162, 0, 68, -15, 2, -109, -24, 143, -11, -8, -55, 45, -10, 45, 137, -103, -53, -178, -111, -14, 205, -198, -44, 4, -248, 70, 5, -109, -62, -231, 82, -370, 104, 5, -215, -31, 74, -337, 44, -4, -216, -150, 20, 94, -50, -33, -13, -100, 133, 25, 54, -35, -238, -31, 125, -12, -224, -111, 23, 49, 26, 5, 40, 12, 73, -352, 53, 171, 18, -50, 75, 89, -81, -121, 191, 23, -128, 125, 67, -84, 121, -58, -194, -13, -11, -426, 16, -84, -194, 133, -127, 27, -235, -106, 55, -244, 57, -91, -413, -71, -97, -317, -145, 8, 30, 61, -107, -93, 85, 308, 258, -163, 97, -155, -189, -110, 179, -134, -33, -12, 18, 58, -205, 30, -197, 298, 66, -334, -121, -37, 53, -165, -47, -51, 15, 70, 86, 108, 89, -5, -33, 74, -48, 67, -72, 14, 67, 24, -81, -59, 24, 101, 47, 114, 116, 123, -29, -251, -90, -21, -92, -76, 5, -105, -66, -49, -84, 165, 21, 47, 88, 28, 50, -11, 131, 34, -1, 29, -78, 21, 74, -116, -121, -513, -34, -499, -139, 10, 3, -75, 57, -54, -14, 86, -210, -74, -48, -118, -293, -210, -114, -43, -234, -90, -87, 57, 22, -2, -118, 63, -39, -135, 27, 79, 10, -106, -35, 1, 20, 9, -127, 240, 128, -128, 168, 94, 96, 50, 188, 102, 25, 60, 19, 9, -18, 108, 33, 383, 136, 20, 70, 13, 126, 97, -18, 105, -32, 92, 199, 104, 22, 44, -93, 92, -78, 74, -93, -37, 88, 98, -42, 205, -66, 21, 190, 54, -34, 82, -21, -67, 33, 196, -42, 13, -16, 83, 9, 231, -45, -102, 223, -72, -148, -189, 256, -150, 163, 34, 157, 217, -60, 27, 159, 393, -21, -163, -41, -61, -57, 148}
+, {-11, 46, -12, 56, -54, -78, 95, -97, 50, -23, 164, -113, 11, -73, -14, 136, 124, 12, 184, 211, 318, 177, 149, 339, 30, 171, -74, 117, 92, 50, 211, -42, 239, -107, -63, 335, 111, 40, 117, 62, 172, 171, -204, 56, -47, 13, 7, -60, 71, -94, -37, 231, -261, -60, 211, -79, -12, 21, -313, -104, -133, -122, 164, 119, -221, -201, -236, 357, -140, 231, 373, 176, -20, -28, 191, -71, -41, -38, 170, -105, 58, -281, -260, 116, 61, 34, 125, 38, -179, -59, 328, -157, -209, -202, 118, 102, 57, -25, 394, -24, 172, 123, 3, 193, 90, -35, -23, 76, 19, 42, -145, 126, 228, 57, 41, -128, 31, 79, -4, -24, 310, 35, 40, -75, 18, 50, -67, -26, 301, -8, -35, 151, 31, 183, 125, -61, 106, 78, -92, -57, -103, -119, 44, -38, -144, 24, -125, 130, -96, 146, 17, -113, -89, 2, -59, 160, 216, -9, -5, -64, -178, 5, -66, -115, -80, 42, 25, -120, -96, 38, -254, 20, 90, 85, 323, -49, -228, 95, 15, -85, -135, 137, -87, -29, -8, 118, 57, 2, 60, 46, -27, 48, 0, -158, 208, -3, -3, 41, 80, 29, 58, 56, 117, 5, -123, -28, 68, -62, 3, -137, 72, 49, 141, 115, -94, 24, 77, 72, -27, 43, -181, 19, 10, 128, 230, 54, 153, 36, 110, -146, -62, 42, 31, -1, -8, -2, -137, 30, 10, 54, 151, 286, -94, -74, -161, 193, 285, -34, -361, 123, 41, 27, 190, -38, -106, 97, 6, 112, 83, 78, 13, -139, 166, 251, 66, 89, -115, -5, 89, -47, -91, 56, -19, -87, 102, 94, 57, -98, 15, 53, 172, -163, -50, -77, -178, 71, 28, 31, -56, 30, -121, 90, -92, -103, 325, 21, 17, -110, 142, 31, 132, -122, 304, -35, 79, 166, 32, 225, -29, -16, 74, 69, 150, -10, 143, 80, -66, 71, 132, 62, -31, 7, -156, -141, -183, -114, 48, -173, 94, -278, -116, 15, 48, 164, 131, 60, 118, -442, -273, -114, 44, 270, -59, 100, 179, 242, 101, -77, -55, -190, -18, -280, 24, -261, -99, 75, -61, 138, 11, 31, 26, 115, 3, -166, 99, -271, -7, 188, 112, 77, 28, 210, 88, 132, 322, 179, 133, 154, -65, -300, -48, -230, 64, 98, -77, 19, -59, 129, -114, -174, -62, -68, -16, -193, -66, 19, -113, 99, -34, -204, -10, 169, -33, 96, -64, 0, 18, -149, -30, -175, 92, 42, 117, 125, 46, 44, -230, 38, 36, -81, -149, -34, -62, -135, 40, -34, -22, 33, 154, -49, -17, 39, 141, 13, -204, 95, -113, 202, -48, 110, 70, 13, 13, -79, -142, -9, -117, -163, -4, -233, -79, -65, -110, -19, 15, -65, -53, 72, 54, -29, 232, -105, 59, -156, 28, 124, -271, -51, -56, -35, -30, -137, -84, 116, 69, 94, 130, 202, 86, -119, -171, 131, -5, -70, 73, -86, -44, -94, 40, -92, -124, 98, 145, 31, -219, 31, 69, -31, -144, 23, -135, 9, 74, -87, 105, 70, -49, -125, 66, -91, -1, -29, 39, 45, 114, 135, 45, 203, -85, -9, 226, -75, -102, -93, -48, -91, -111, 24, 271, -168, -71, -55, 73, 161, -42, -12, 71, 2, -27, 23, -144, 29, -41, -166, 174, -38, 149, -124, 172, -12, -198, 96, 22, 28, -21, 39, -201, -42, -127, 73, 186, 113, 134, -5, 91, -121, -3, 67, -41, 46, -20, 149, -43, 78, -192, 1}
+, {19, 65, 8, 143, 22, -153, 115, -73, 53, -3, 142, 63, 75, -57, -53, 100, -110, 34, -47, 391, 75, 100, 356, 127, -34, 52, 195, -96, 73, -7, 197, 111, 223, 42, 132, 271, 4, -47, 160, -141, 233, 55, -2, -163, 27, -41, 89, 127, -23, -44, -54, -89, 159, 105, -36, 123, 12, 44, 87, 78, -77, -136, 126, 82, -107, -14, 54, -16, -109, -39, 46, 20, -24, -38, 50, -72, -8, 49, -61, 48, 46, -224, 70, 71, 114, 85, 27, 280, -31, -74, 192, 51, -244, -12, -44, -45, 146, -51, 21, 132, -43, -74, 4, -26, 234, -48, -63, -4, 17, 23, 50, -154, 50, 66, -73, 213, -130, -16, 117, 28, -23, 117, -143, 265, 86, 24, -31, -123, 32, 85, 63, 120, -191, -66, 20, -208, 124, -6, 93, 123, 16, 127, 66, -66, 27, 49, -6, -6, 47, -1, -104, 14, 68, 91, 199, -44, 67, 113, 33, -104, -35, -98, -99, -175, 121, -54, -54, 78, -145, -340, 163, -23, -156, 57, -5, -41, -241, -122, 50, -314, 11, -39, -329, 50, 8, -336, 39, -29, 13, 116, -3, -35, 106, -22, -18, 116, -138, 39, 178, -83, 199, -5, 19, 88, 41, 107, 20, -148, 65, 103, -66, 236, -77, -73, 69, 20, 225, 52, -216, 36, 232, 76, 62, -49, -73, 57, -216, -13, -78, 119, 36, -115, -83, 65, -192, -74, 210, 38, -25, -191, 76, -119, -14, 73, -88, 8, -2, -138, 135, 136, -83, -14, 110, -7, 91, -94, 63, 205, -43, -221, 5, 101, -130, 28, -75, -27, 213, -49, -96, 95, 46, -24, 131, 63, 39, -48, 174, 174, -276, 58, 118, 136, -199, -113, -182, 68, -360, 40, 7, -166, 129, 102, -123, 31, -141, 79, 79, 191, -259, -44, 10, 105, -203, -184, -7, -18, 83, 99, 9, 217, -16, 157, -3, 84, -57, -345, 71, -87, -292, -69, 128, 59, -72, 116, 39, 148, -115, -33, 154, 185, -141, -238, 86, -120, -67, -3, -233, 113, 26, -27, 45, -16, -39, -67, 67, -71, -156, -239, -11, -88, -199, 118, 12, 72, -8, 125, 56, 56, 94, 38, 26, 62, 33, -78, 54, 92, -176, 103, 162, -106, -36, 157, 132, 88, 74, 129, 29, 4, 42, -122, -352, -196, 58, 42, 217, -186, -37, 66, 161, -79, -131, 184, 184, 218, 17, 17, -254, -83, -65, 178, 113, -281, -34, -12, 39, 68, -19, 129, -123, 9, 49, -48, -291, -226, -55, 37, -60, -93, 20, -27, 140, -64, -48, 57, 39, -25, 39, 54, -402, -46, 53, -65, -303, 44, 23, 100, 18, -243, 43, -180, -308, -3, 170, -15, 83, -3, 171, 125, -247, -81, -53, 73, -197, 53, -21, 65, -74, 88, 91, -56, 132, -81, 225, -12, -143, 266, -17, 6, -52, -64, 30, -4, -20, 67, 12, 49, 87, 82, 106, 137, 302, -235, -19, 160, -57, 24, 39, 183, 0, -51, 105, 16, -7, 120, 42, 93, 104, -188, 70, -136, 94, -256, -187, -147, 11, -340, -91, 89, -182, 11, 14, 34, -107, -145, -68, -134, -250, -622, 49, 24, -507, -501, -16, 56, 24, 74, 31, 185, -393, 11, -305, -38, -387, -285, -2, 114, -402, -366, -96, -28, 131, -32, 5, -136, -293, 218, -387, -203, -360, -69, -131, -19, -383, -16, -233, -15, 91, 8, -104, -355, -285, -4, -77, -336, -209, -60, -280, -103, -177, -161, -319, 1, -21, 51, -252, -91}
+, {-11, 2, -133, 17, -74, -186, -6, -129, 15, -137, 0, -105, -57, 34, -156, -87, -68, 29, -190, -117, -185, -208, 145, -155, -283, -226, -122, 40, -20, 86, 138, -52, -90, 58, 65, -356, -12, -4, -92, 243, -190, -97, -199, -53, 26, 60, 242, -98, -56, -28, 1, -309, 44, 68, -83, 22, -20, -64, 111, 43, 60, 22, 13, 48, 94, -5, 37, -280, 73, 225, -167, 93, 21, -100, 47, -59, 87, -35, -91, -179, 231, -54, 11, -108, 42, -8, -220, 1, 34, -91, -211, -5, 197, -66, -20, -28, -2, 63, -126, 22, -36, 53, 91, -233, -44, 110, -24, 44, 66, -64, 1, 176, 79, 10, 44, 56, 15, -13, -26, 45, -3, 46, -175, 0, 80, -131, -123, 6, 67, 43, -22, 38, -88, 24, -33, 67, 88, 5, -32, -87, 17, -35, -36, -34, 176, -4, 188, -116, 46, 154, -88, 30, 110, 144, 115, -2, -230, -186, -46, -6, 260, -80, 28, -120, 185, -173, -23, 102, 85, -27, 278, 44, -291, 4, -188, 33, 228, -56, -17, -94, 162, -98, -186, 33, -29, -37, -104, -41, -326, -116, -344, 18, -123, -60, -41, 130, -77, 68, -64, -3, -102, 68, -100, 80, 208, -57, -11, 25, 48, 24, 43, 68, 44, -36, -51, 44, -102, 43, 45, -250, 29, -150, 14, -19, 81, -5, 34, 88, -64, -102, 62, -26, 73, -25, -13, -40, -227, 16, -7, -48, 74, -184, -272, -84, -152, 107, -238, -70, 100, -31, 147, -61, -152, -26, -60, -387, 98, -169, 61, -88, 233, 88, -447, -37, 40, -13, 177, -86, -225, -289, -246, -30, 219, -200, 197, -64, 83, -47, -306, -74, -2, 245, -144, -205, -348, -136, -536, -3, 101, -119, -60, -122, 188, -33, 132, 140, -137, 248, 98, -122, 50, -196, 27, -75, -65, -34, 1, 66, 59, 0, 18, 123, -44, 86, -6, -40, -189, -125, -53, 55, 154, 97, 191, -116, -22, -529, 111, -240, 42, -78, 68, 121, -122, 99, 146, 137, -96, 114, -105, -208, -157, -155, 80, -68, -299, -130, -24, 24, 55, 51, 2, -30, 97, -245, 60, 6, 12, 113, 2, -59, 43, 177, -22, -265, 89, -510, -402, -272, 171, -152, 35, 170, 69, -21, 28, 96, 64, 231, 112, -299, -136, -392, -35, -33, 68, -72, -42, -27, 108, 57, 53, 130, 45, 178, 47, 138, 86, -36, -5, 56, 89, 110, 95, 146, -19, -39, 221, 186, -143, -146, 79, -43, -65, 113, 72, 102, 34, 164, 31, -130, 14, -507, 46, -49, -24, -440, 77, 90, 93, 112, 94, 46, 36, 91, -82, -29, -170, 38, -23, 24, -147, -90, 168, -13, -101, -64, -28, -120, 136, -152, 38, 55, 152, 310, 23, 127, 159, -5, 114, -436, -193, -332, -106, -153, 104, 29, 190, -113, 170, -34, -54, 30, -45, 141, 102, 69, -122, -58, -53, 177, 234, 25, -60, 53, -84, -108, -14, 65, 18, 107, -66, 28, -4, 138, 30, -184, -52, 219, -418, -52, -43, -108, -5, -65, -56, -17, -1, 47, 170, 60, -41, 143, -107, -57, -46, 133, -78, -209, 21, 20, -444, -72, -24, -21, 140, -37, 15, 38, -28, -20, -60, 56, -39, 61, 19, -62, 39, -198, 47, -98, -181, -105, 23, -83, 104, 87, 109, -42, 30, 102, -15, -138, 91, 67, 148, 75, -36, -51, -14, 188, 209, 104, 365, 16, 177, -219, 140, 103, 58, 96, 72, 154, -60, 25, 1, 202}
+, {-7, 82, -45, 16, 153, 55, 47, 54, 75, 129, 83, 51, -56, -77, 261, -121, 107, -118, 16, 74, 103, -29, 20, 84, 126, -2, 9, 17, -115, 57, 80, 70, 17, -103, 103, -177, -17, -25, -175, 46, 209, 28, -107, -47, -84, -22, -16, -70, -40, -70, 5, -52, -95, 71, -18, 124, 4, 22, -119, -56, -45, 5, 115, -41, -105, -53, -123, 13, -96, 44, 38, 53, -46, -144, 20, -88, -74, -19, 59, -166, 136, 109, -78, 87, -60, 44, 15, 187, -18, 142, 88, -92, 175, -5, -108, 70, 76, -77, -46, -75, -122, 12, -68, 44, 18, -24, -109, -55, -53, -132, -111, -191, 124, -63, -59, -95, -183, -94, -466, 104, 36, 56, -303, -302, -72, -18, -485, -87, 85, -52, -50, 49, 30, 76, -83, 68, 2, -49, 16, -604, -36, -88, -308, 38, 48, 42, 31, 39, 94, 146, 31, -51, -50, 153, -80, 5, 92, 139, 65, 13, -211, 77, -60, -69, -230, -197, 94, -48, -60, -222, 46, -38, 2, 61, 194, 20, -298, 92, -152, -77, 0, -85, 164, 56, -223, -33, 107, 112, 267, 289, 122, 7, 57, -117, -140, -175, -57, -4, -161, 75, 20, -27, -23, -139, -78, -165, -153, -98, 100, -158, 152, -125, 106, -38, -167, 26, 87, -15, -30, -272, -113, -435, -192, -6, 65, -53, -30, -114, 110, 105, -94, -13, -45, 19, 49, -113, -97, -227, 8, 64, 8, 97, 24, 114, 185, -11, 16, -3, 218, 16, -101, 182, 109, 103, 158, 6, -121, -30, 35, -195, 36, 10, -115, -226, 40, -224, 97, 97, 123, 55, -13, 82, -89, -71, -225, -301, -3, -273, 103, -21, -453, -298, 237, 169, -31, 209, 101, 214, -152, 42, -100, -263, 103, -94, 130, 41, -88, -255, 82, 10, 67, 35, -6, -73, -129, 108, 164, -346, 78, -60, 13, -138, -69, -62, 55, 168, -348, -1, 99, 137, 58, 100, 131, -55, 117, 20, 127, 40, -336, 2, 70, 122, -148, 132, 178, 13, 133, 106, -97, 68, -24, -18, 110, 139, 102, -161, 48, -30, 83, 31, 32, -57, 99, -131, -77, -23, 48, 256, -226, -180, 41, -214, -187, -348, -310, -217, -448, -59, -162, -75, -199, -224, -159, 17, -123, -124, -117, -45, -408, -22, -189, 3, -474, -153, -212, 10, -120, -2, -30, 84, 84, -65, -2, -132, -30, 106, 134, 51, -105, 66, -202, 93, 62, -96, -55, -160, -118, -114, -24, -434, -88, 121, -81, 99, -21, 99, -162, 134, -93, -190, -84, 4, -61, -81, 135, -17, -44, 178, 57, 128, 90, 133, 87, 59, 12, 108, 12, 104, -64, -24, 196, -38, 40, 68, 165, 0, -35, -133, 11, -1, 11, -89, 145, 91, -202, -26, 44, -8, -23, -290, 23, -11, -193, -200, -41, -85, 120, -225, 61, -129, -140, -218, -77, -19, -77, -47, -193, -151, -219, -185, -108, 12, 12, -35, -206, -69, -131, -193, 154, -122, -180, -64, -49, 8, -88, -114, -214, 39, -66, -62, -109, -40, -64, -12, 24, 43, -140, 67, 78, 19, -14, -18, -57, 164, -27, -43, 2, -16, 71, 10, 248, -16, -24, 9, 137, -34, -34, 85, 59, 236, 69, -112, 78, 363, 10, 0, 173, 55, -44, -37, -74, 5, -13, 22, 145, 393, 174, -110, 53, -134, 75, -28, 0, 224, 42, -47, -128, 20, 25, 101, 145, -40, 335, 28, 158, -53, 57, 59, 89, 211, -74, -37, -107, -102, -41, 142}
+, {22, 29, 206, -2, -5, -12, -171, 77, 170, 52, 131, -77, -1, -30, -187, 24, -36, 138, -9, -50, -122, -8, -58, -54, -138, 73, 24, -219, -10, 16, -162, 169, -8, 95, 77, 19, -33, -81, 132, -10, -314, 166, 119, -13, 54, 63, -280, 143, -185, 92, 2, -227, -50, -351, 161, 12, -89, -63, 10, 147, -105, 74, 198, -10, -134, -22, -54, -67, -89, -116, 84, 119, 7, 124, -11, 186, -16, 20, 125, -111, 40, -79, -94, 71, 210, -69, 13, 126, -186, 100, 155, -47, 198, -146, -10, 97, -112, 31, -99, 86, -125, 11, 11, -94, 103, -117, 17, -133, 166, -73, -14, -83, -187, -47, -137, 215, 13, 6, 74, 29, -375, 58, -123, -140, 105, -124, -146, 21, -52, 16, -11, 42, -58, -65, 92, 165, -351, -4, -106, 104, 131, -169, -6, 122, -73, 39, 62, -185, -21, -314, 176, 65, -32, -234, 57, 47, -177, -206, -8, 78, -92, 76, 44, 5, 17, -206, 21, -39, 105, -28, -201, 168, -60, -29, 9, 72, -123, -140, -68, -37, -75, 26, 50, -32, -115, -100, -25, 100, 106, 76, -36, -82, 95, -206, 50, 25, 78, 90, -27, 26, 179, 23, 51, 105, -125, -37, -19, -29, 59, -162, 132, 13, -84, -10, 19, 161, 4, -24, 140, 109, -88, -35, 41, -29, -59, -35, -37, -90, -10, 43, -73, 30, -48, -150, 62, 65, -26, -39, -126, 101, -24, -230, -74, 25, -110, -148, 1, -139, -9, -60, -35, -34, -58, 48, -59, -42, -116, 82, 18, 49, -17, 4, 95, -29, 7, -18, 121, -32, 294, -81, 190, 22, -12, -84, -87, -3, 18, 79, 150, 198, -105, 365, -7, 111, 140, 47, 168, 22, -96, 430, 312, -187, -117, -12, -152, -216, 298, -178, -48, 100, 126, 193, 5, 104, -86, 83, 114, -264, -68, -174, 85, -255, 1, -186, 38, 37, -124, -15, 56, 98, 37, -193, -81, -16, -41, 1, 35, -5, -85, 112, 146, 124, -60, -21, 55, 85, -165, -245, 73, -86, 46, -271, -115, -45, 37, -510, 2, 56, -79, 79, -109, 99, 9, 125, -20, -154, -26, -2, -159, 33, -15, -220, 51, 84, -102, 155, -149, 3, -22, 223, 136, -254, 104, -92, -223, 61, 64, -140, 183, 78, -57, 21, -117, 23, 159, 69, 419, -138, 203, -3, 49, 43, 91, 112, 111, -138, 70, -123, -65, 388, 181, -58, 232, -67, 83, 162, -85, -64, 179, 91, -125, -22, -38, 10, -110, 225, 62, 26, 195, 51, 27, -59, -106, -97, 74, -53, -98, 81, 144, 103, 46, 24, -51, 33, -38, -170, -150, 22, -5, -224, -177, 34, -51, -43, 155, -25, -43, 60, 78, -142, -30, 74, -41, 84, 44, 54, 76, -3, -20, -226, -219, -223, -236, 77, 258, -67, 200, 70, 107, 105, -47, 88, 128, 135, -140, -409, -221, -310, -93, -28, -52, 36, 9, 223, 46, -145, -45, -149, 43, 138, 54, 163, -91, -11, 109, 173, -48, 161, 6, -162, 162, 4, -86, 42, -137, -27, 105, -73, -46, -1, 45, 280, -127, 325, 75, -9, 81, -59, 121, -37, -257, 31, -3, 21, -16, 110, 16, 156, -138, 184, 6, 79, -18, -157, 56, 47, -85, -55, -108, -37, 27, 27, 35, 39, -32, 203, -3, 183, -186, 45, 31, 60, -44, 234, -118, -61, 220, -120, 24, -223, 12, -11, 79, 261, 166, 79, 16, 362, -13, 386, 123, -107, 79, -184, 85, -64}
+, {165, 196, 136, 32, -27, 27, 65, 82, 72, 55, 161, 37, 130, 33, 73, 64, 27, 56, 67, -67, -94, 31, 17, -1, 113, -37, -147, 214, -28, 165, -186, -53, -69, 4, 32, -137, 41, 16, -54, 63, 12, -129, 118, 136, 23, 57, -188, -58, 39, 82, 4, -40, 153, -25, -131, 187, -24, -28, 81, -13, 8, 14, -9, 55, -98, -2, 73, -27, -22, -328, 88, 206, 10, 130, -25, 15, -125, -24, 177, 52, 108, -40, -128, -24, 30, -107, 47, 63, -125, -1, 67, 110, 126, -27, 82, 51, 9, -85, -60, 246, -52, 38, -38, 90, -24, 170, 14, -134, -26, -97, -18, 35, 69, -38, -133, 184, -85, 99, 78, 80, -92, 84, -78, -19, 113, -241, -230, 0, 62, -12, -27, 65, 2, 26, 123, 48, -34, 57, -121, -42, 82, -165, -113, 27, -14, 75, -65, -28, -75, -102, 30, 73, -129, 19, -29, 19, -136, -115, -12, 50, 49, 105, 33, -47, -1, -197, 115, 13, 7, -46, -89, 100, -92, 50, 65, -47, -164, 93, -72, -79, -200, 78, 31, 123, 15, -67, 67, -40, 79, -41, 84, 19, 52, -469, -262, 40, -294, 7, -184, -48, 80, -122, -31, 188, -151, -115, 6, -328, 72, -349, 391, -44, 110, -3, -221, 107, -51, -118, 75, -103, -125, -242, -56, 156, -17, -159, 292, -223, 75, 94, -325, 5, -211, -117, 101, -104, -48, -86, -297, 147, -52, -91, 42, -106, -35, -157, 21, -361, -173, -68, -124, -156, 64, 65, -70, 140, -141, 55, 12, 141, -42, -190, 153, -70, 41, 12, -63, 80, 217, 28, 194, 105, -35, 23, -4, 11, 41, 51, 170, -7, -24, 16, 74, 286, 83, 94, 259, 77, -128, 327, 286, -544, -137, -175, 7, -159, 42, -309, -383, -66, 83, 21, 7, 17, -338, 70, -213, -425, -309, -165, -10, -330, -100, -209, 174, 251, -67, 238, 279, -92, -155, -233, -291, 17, -92, -25, 88, -71, -540, -108, 227, 54, -254, 60, 174, 160, 77, -162, 15, -57, 7, -199, -92, 103, 68, -413, 61, 71, -67, 68, -3, -85, -100, 29, 41, -49, -28, -65, -91, 35, 66, -468, 96, 110, 32, 91, 19, 29, -52, -31, 5, -122, 131, 42, -263, 20, -50, -291, -95, -51, 152, 75, -138, -20, 53, 117, 39, -85, 236, 129, 20, 15, -39, 3, 138, -66, 67, 48, -147, 40, -36, 232, 125, -85, 5, 38, -32, -39, 81, 31, -71, -114, 132, 35, -8, 91, -14, -21, -27, -58, -99, -27, 60, -23, -5, 76, -212, 31, 79, -11, 58, 41, 84, -112, -96, 28, -107, 49, -56, -142, 83, 40, -156, 106, -89, -24, -12, -88, -53, -195, 70, 1, 6, 67, -111, -52, 54, -98, -194, -411, -97, -136, -174, -139, 59, -362, -22, 21, -186, 170, 12, -59, -44, 112, -274, -451, -128, -273, -317, -70, -63, -51, -42, 74, 7, -106, 25, -45, 44, -98, -2, 35, -19, -10, 39, 164, 44, 162, 187, 6, 97, 32, 51, 94, 102, -70, 38, 31, -55, 83, 51, 75, -11, 335, -37, 23, -28, -91, 32, 55, -130, 34, -36, -9, -24, 19, 20, 34, -102, 155, -40, 145, -76, -15, -34, 64, -64, 10, -29, -102, 126, -70, 38, 76, -183, -111, 122, 145, -10, 14, -104, 83, 15, 121, -49, -74, 34, -45, -85, -113, 129, 46, 167, 199, 126, 77, -83, 24, 2, 146, -105, 30, -8, -82, -59, -10}
+, {119, 68, 192, 108, 57, -94, 73, 201, -25, -104, 22, 216, 32, 50, 85, 37, 109, 14, 60, 86, -63, 31, 11, 100, 71, 44, -61, 226, 10, 26, 128, 45, 6, -19, -35, -15, 17, 29, -1, 60, -16, -16, 57, 103, 5, 61, -95, -57, -199, 34, 137, -184, -87, -161, -201, 108, -156, 105, 97, 1, -54, 16, 43, 21, -39, 8, 83, 67, 75, 38, -110, -135, -114, -7, 76, 38, -192, -31, 158, 39, -292, -270, -166, -73, -47, 117, 75, -80, -7, -295, 203, -60, -354, 20, 79, -39, -80, -76, 38, 102, 86, -48, 70, 5, 144, -144, -85, 326, -40, -137, -86, -52, -239, -80, -94, -111, -57, -19, -48, 31, -286, 55, -61, 20, -30, 91, 88, 63, -301, 100, -53, -110, -15, 20, 78, -200, -469, -1, 113, 72, 125, -44, 158, 111, -273, 87, 61, -107, 13, -505, 23, 106, -208, -71, -57, 85, -127, -15, 32, 75, -110, 26, -6, -64, 135, -383, -89, 88, 15, -241, -162, 30, -430, 22, -295, 50, -291, -125, -159, -96, -84, -115, -114, -184, 49, -338, -352, 91, -373, -14, -282, -237, 103, -50, 246, 66, 56, -33, 89, 102, -120, 43, -29, -63, -84, -146, -38, 162, -43, -201, -83, 194, -125, 6, 46, -83, 138, -30, -24, -21, -135, -21, 59, -101, -68, 61, -73, 42, -161, 32, 119, 87, 25, 18, -40, 112, 216, 70, 47, 110, 199, -15, 20, 29, 93, -160, 257, 36, -492, 78, -56, -8, 72, -156, -168, 61, -55, -171, 32, 137, -122, 87, 134, 63, 37, -47, -85, -182, -19, -322, 85, -106, -105, -280, -39, 20, -82, 201, -113, -227, 110, -286, -283, -322, -38, -227, -170, -70, 245, -11, 173, 65, -32, -292, -233, 9, 168, -109, -57, 8, -191, 92, -52, -159, 140, -206, 84, -264, 11, 34, -216, -50, 149, -106, 25, -32, -134, -16, -68, -39, -75, 22, -25, -248, 63, 202, 53, -64, 177, 50, 53, 73, 111, -31, 32, -9, 32, -179, -58, 161, 36, -191, 46, 122, -85, -20, 98, 93, -107, 4, 38, -107, -53, 56, 39, 44, -88, -12, 45, 42, 23, -162, -212, -19, -145, -25, -41, -48, -210, -247, -133, -168, 57, 185, -213, -49, -75, -184, -87, -131, 45, -128, 67, -278, 227, 34, 184, -192, 171, 54, 66, -28, 72, -40, 52, -82, 36, 19, -171, 92, -25, 144, 129, -288, -110, -195, -136, -339, 250, -154, -53, -33, -152, -10, 37, 51, -129, 70, -101, -90, -281, -13, 50, -57, 35, -46, 136, 131, -53, 63, -24, 67, 7, 103, -14, 78, 52, -3, 129, -28, 85, 18, 88, 91, 183, -43, -23, -11, 31, -321, -30, 50, 171, 7, -150, 116, -16, -49, -215, -197, 61, -201, 25, -122, -101, -195, -95, -246, -168, 128, -319, -171, -79, -73, -292, -300, -13, -213, -272, -277, -110, 265, 159, -64, 348, 105, 46, 65, 4, 165, 136, 76, 422, -69, -29, 138, -27, 112, 225, 50, -47, 43, 36, 61, 68, 212, -21, -7, 329, -106, 24, 65, 12, -25, -136, 43, -91, 77, 5, -32, 351, 249, -101, -93, -31, -159, -43, 16, 51, -188, -43, 69, -66, 54, -62, 45, 125, 124, -103, -54, 133, -223, -106, -136, 59, -301, 203, -114, 87, 147, -357, 205, -23, 156, -59, -375, -25, -313, -253, -247, -75, -81, 196, 118, 99, -107, -92, -32, 92, 69, -190, -262, -178, -225, -245, -3}
+, {-67, -25, -20, 67, -182, -192, 49, -260, -36, -143, 190, -91, -144, -112, -162, 122, -52, 68, -29, 63, -22, -113, 135, -18, -108, -33, 123, -131, 68, 31, 6, 109, -147, 15, 106, -41, -186, -93, 136, -104, -75, -76, -70, -3, -47, 72, 92, 119, -98, -13, -8, -356, -132, -57, -1, 149, -5, -97, 38, 136, 38, 16, 59, 45, -143, 27, -8, -208, 4, -206, 27, 155, -38, -116, 123, 57, 188, 27, 61, -32, 69, 2, 13, -1, -13, -31, -156, -35, 34, 193, -51, 76, -73, 52, -128, -25, 72, -69, -69, 159, 13, -121, 83, -66, 61, 33, -42, -46, -36, -1, 7, 88, 39, -64, -271, 92, -72, 90, 25, 93, -181, 78, -46, 23, 126, 14, 34, -56, -18, -31, -163, 188, -65, -87, 16, 50, 70, 64, 6, 26, 57, 7, -67, -5, -193, -75, 93, -70, 86, 39, 12, 9, -104, 224, 40, -20, -95, -174, 16, 56, 104, -87, 38, -217, 60, -199, 46, -9, 66, -339, 80, -25, -204, -141, -226, -44, 55, -93, -14, -6, 204, -155, -81, 190, 40, -258, -105, -21, -51, 13, -334, 46, -68, 30, 27, 95, -110, -28, 54, -72, -97, 63, 81, 54, -4, 125, 73, 18, -50, 91, -98, 42, -115, 45, 125, -23, 44, -29, -66, 72, 109, -37, 84, 32, 90, -40, -209, 35, -96, -68, -36, -104, -23, -19, -25, 95, 70, -19, 87, -316, -20, -90, -355, -58, -426, 95, -190, -70, 32, -96, 37, -98, -46, -31, 7, -374, 119, -593, -43, -43, -25, 277, -299, -2, 57, -55, 84, -167, -4, -307, -163, -191, 149, -107, 43, -45, 112, -25, -228, -16, 42, 139, -106, -200, -270, 16, -328, -54, -13, -14, -11, 95, -67, -3, -99, -51, 104, 15, -105, 21, 85, -19, -3, 36, -71, -38, -102, 102, -26, 81, 62, -92, -132, 121, -269, -206, 115, 13, -186, 132, -53, 188, -20, 26, -130, -123, 69, -121, 152, 150, -256, -125, 216, 105, -2, 37, -82, 148, -142, 25, -312, 218, -193, -432, 142, -3, -493, -295, -27, -111, -262, 59, 55, -202, -158, 48, -58, 242, -53, -140, -105, 63, -50, -189, 248, 1, -267, -292, -62, 105, -38, 69, 50, 38, 153, 36, 40, 163, -9, -43, -100, -10, -31, 70, 115, -78, 3, 174, -42, -24, -77, 142, 111, 114, -122, 132, -42, -70, -90, -18, 54, -83, -36, 73, -16, 14, -8, -34, -34, 177, 20, -473, 88, -435, -155, 15, 168, 10, 59, -35, 131, 61, -149, 38, 171, 42, 82, -169, 16, -153, -237, -8, -236, 129, -6, 65, -73, 51, 38, 9, -108, 104, 96, -149, 48, -47, -159, -64, -67, 105, -85, 50, 1, -179, 65, -138, -33, 202, 53, 30, 0, 30, 62, 84, -61, 279, 168, -36, 183, -130, 48, -86, -34, 208, 133, 149, 182, 131, 150, 213, 168, -239, -4, 97, -206, 75, 67, 176, 70, -15, 4, -49, -247, -46, -3, -267, 146, -372, -262, 60, -198, 35, 60, 7, 143, -131, -43, -9, -336, -30, 61, -51, -94, -26, 15, -8, -2, -199, 34, 91, -227, -281, 79, -8, -21, 5, 29, 55, -289, 187, 15, -35, 8, -211, 46, 99, -360, -307, 57, 34, 136, 81, -3, 125, -64, 537, 65, -27, -81, -181, 160, 8, 57, 19, 81, 62, 17, 71, 20, 196, 230, 167, -28, 104, 149, -26, 239, 293, -40, -179, 130, 188, 50, 79, 176, 105}
+, {109, -50, -11, -57, -96, -113, 80, -134, 89, -45, -105, -104, 21, -103, 34, -48, 11, -82, -32, -29, -130, -34, -81, 7, -100, -34, -303, -145, 16, 119, -175, -153, -47, 19, -44, -85, 24, 4, 18, 14, -119, -13, 159, 49, 28, -6, -27, 82, -17, 1, -59, -26, -72, 49, 28, 119, 23, 49, 247, 18, 0, 31, -12, -5, -56, -4, -20, 51, 136, -186, 76, -40, 64, 38, 121, 190, -113, 55, 20, -73, 147, -62, -100, -28, 122, -112, -49, 38, -87, 63, -42, 144, 123, -59, 37, -128, 231, 38, 451, -70, 118, 15, 41, 63, 130, -3, 254, -92, 53, 36, 130, 256, 34, 38, 343, -79, 55, 105, -66, 69, 180, 45, 258, 189, 0, 9, 184, 49, 106, 6, 193, 17, -108, -20, 69, 99, 169, 46, 83, 176, -166, -74, 79, 20, 68, -102, -105, -1, -84, 32, -61, -39, -106, -44, -44, -41, -122, -252, -110, -122, 134, -29, 26, 57, 68, 47, -2, 65, 70, -28, -95, -1, 193, 25, -240, -28, 168, 128, 31, 105, 45, 12, 115, 94, 122, 333, -60, -161, -73, -61, -24, 37, -146, 215, -101, -135, 39, -36, 219, -2, 123, -14, 82, 132, 57, 59, 218, 450, 20, 105, -68, 5, -84, -45, 177, 11, -256, -72, 66, 133, 16, 240, 102, 205, -58, 57, 171, -175, -61, 3, -26, -81, 25, -41, 103, 143, -190, -68, -197, 265, -15, -48, 70, -89, 14, 88, -27, 80, -261, -196, -183, -178, -104, -314, -268, 16, 64, -106, -28, 169, -90, -4, 251, 172, 27, 195, -188, -27, 28, -267, 23, -69, 2, -10, -85, 88, 64, 80, 97, 144, 4, 113, -40, 88, 97, -10, 273, 109, 74, 363, -2, 430, 35, 64, 298, 12, 226, -152, 128, 128, 222, 159, 195, 95, -83, 89, -19, 32, -134, 28, 129, -133, -155, 84, -48, 137, 151, 166, 26, 63, -41, 6, -135, -58, 30, 9, 100, -23, -224, -42, 68, 43, -144, -98, -69, 125, -81, -241, 30, 5, 59, -446, 51, 27, -102, -243, 137, 45, -212, -88, -12, 67, -133, 172, 131, -64, 35, -325, 357, 71, -52, -531, 64, 408, 48, 128, 299, 194, 42, 36, 30, -43, -8, -100, 80, 19, 16, -54, 13, 181, 16, 109, 55, -53, -45, 61, -18, -86, -39, 188, -87, -23, 119, 125, 22, 47, -116, 124, -97, 31, 55, -155, 12, 197, -2, 22, -80, 47, 50, -78, -10, 14, 143, 56, -135, -118, 54, -160, 154, 3, -125, -98, -10, 73, -51, -1, 83, 148, -37, -7, -189, -154, 64, 13, 6, -101, -224, 15, -356, -42, 17, -235, -186, -23, -37, -38, -594, -33, 22, -357, -68, -48, -71, -58, -76, -180, -27, -45, -76, 238, 162, -29, -199, -57, 53, -332, -18, -17, -194, 102, -51, -54, 5, -6, -162, -133, 118, -139, -70, -47, -225, -172, -31, 91, -175, -54, -141, 87, -1, 50, -2, -64, -147, 5, -90, -14, -69, -200, 244, 23, 30, -6, -64, -46, 105, -64, -54, -117, -346, -75, -27, 82, 70, -158, -3, -64, -68, -49, 3, -208, -147, -26, 75, -80, -441, -94, 43, -17, 86, -241, 47, 67, 86, -65, 25, -10, 109, 108, -20, -13, -7, -91, 34, -42, -154, -476, -154, -1, -125, 191, -125, 5, 15, -9, -69, 59, 52, 10, -120, -105, -158, 56, -148, 78, -92, 155, -153, -66, -145, -79, -196, -166, 131, -69, -1, -97}
+, {79, 161, 40, 49, 39, -183, -15, -38, 49, 64, 111, -111, -74, -20, -191, 118, -50, -34, -5, 257, 73, -52, 196, -7, -158, 79, -122, -74, 40, 8, -71, 145, -108, -26, 36, -124, 74, 7, 132, -133, -59, -21, 172, 122, 20, 83, 165, 87, -66, 40, 29, -71, 117, -257, 29, -12, -150, -83, 285, 157, -28, 4, 149, 176, -178, 41, 12, -306, 14, -360, -89, -101, -49, 11, 51, 158, -32, 65, -19, 22, -181, -49, -87, 22, 15, 78, -286, -49, -105, -109, -26, 158, -155, -61, 66, -150, -8, -11, 69, 275, 38, -81, 361, 50, 10, 70, 225, -13, 25, -126, 273, 256, -133, -76, -33, 197, -91, 35, 196, -16, -80, -63, 158, 114, -105, 36, 358, 69, -67, 36, 111, 73, 31, 23, 69, 46, -184, -12, 313, 2, -121, 217, 76, 88, -76, 25, -22, -128, -1, -104, -6, 75, -16, -185, 141, 144, -278, 13, 18, 100, -20, 41, 117, -135, 54, -250, -93, 215, 47, -355, -4, -189, -377, -7, -390, 73, 11, -111, 152, -153, 222, -67, -245, -66, 77, -200, -388, 112, -335, 59, -631, -37, 14, 250, -102, 264, -279, -166, 394, -211, 54, -372, -20, 266, 30, 260, 479, -93, -80, 445, -99, -86, -243, -49, 178, -78, -341, -84, -6, 114, 68, 209, 211, -6, -74, 241, -41, -168, -136, -120, 35, -207, -139, -140, -188, 147, 136, 337, -197, 13, -25, -185, -53, -21, -115, 2, -25, -22, 40, -59, -193, -114, -11, 7, 91, -83, 7, -361, 99, -6, -21, -21, -6, 92, -2, 10, -118, -85, -52, -352, -87, -152, 279, -105, -19, 201, 251, 209, -96, 140, 10, 202, -125, -232, -262, -218, -75, 70, 71, 66, 242, -129, 22, 142, -98, 92, 56, 158, -179, -311, 57, -196, -316, 172, -28, 146, 14, 2, -45, 64, 36, 16, 69, 35, -220, -222, 149, -49, -230, -17, 144, 337, 5, 193, -1, -49, 84, 8, 157, 75, 37, 146, 149, -1, 23, -6, -148, -33, -64, -84, 58, 11, -20, -7, -71, -87, 13, 63, 49, 52, -25, 16, -58, -37, -1, 156, 48, -74, 189, 7, 58, 48, 68, 156, 14, -58, 86, 5, 21, -60, -32, 23, 21, 64, 1, 200, -15, 277, 146, -74, 79, -5, 18, -31, 193, -100, 86, -23, 199, -17, -110, 263, 142, 180, 51, -63, 3, -264, 19, 150, 154, -187, 122, 71, 14, 33, -128, 25, -8, -3, -37, -99, -265, -219, -121, 6, 158, -53, 130, -50, 89, 51, -52, -26, 65, 37, 5, 43, -203, -113, -32, 65, -145, 96, -40, 21, -122, -126, 19, 20, -144, 13, 224, 122, -1, 37, 83, 6, -69, -91, 13, -67, 12, 37, -48, 81, 54, 128, 41, 99, 150, 101, 188, -12, -58, 2, -144, 88, 243, 97, -63, 110, -157, 262, -55, -58, 154, -5, 113, -19, 373, -227, -2, 453, 59, 22, 14, 295, -25, 182, 145, 93, 47, 101, -12, 14, 63, -134, 338, 4, -22, -170, 0, -131, -139, -75, 22, -12, -207, -93, 25, 167, 30, -21, 27, -47, 17, -99, -60, 50, -263, -61, -57, -14, -228, 12, -14, 98, -4, 81, 114, -54, -73, -200, -20, 57, -106, 7, -28, 11, 113, -99, 63, 30, -233, 206, -49, 17, -279, 110, -35, 143, -176, -101, -62, -25, 6, -111, -50, 10, -152, 74, -94, -10, 24, 67, 12, 242, -184, 38, -69, -114, 11, -144, -30, -110}
+, {170, 56, 62, 62, 1, -69, -5, -128, 104, -33, -55, -266, 125, -14, -133, 28, -149, 74, -31, 27, 85, -55, 134, 4, 4, 59, 107, 69, 26, 12, -135, 61, -124, 13, 82, -49, 100, -23, 64, 58, -65, -155, -49, 96, -49, 82, 51, -22, -79, -23, -3, -294, -120, -85, -22, 10, 96, 50, -41, -2, -11, 17, -5, -39, -30, -1, -127, -163, 73, -162, -4, 2, 19, -168, 40, 79, -101, -69, -81, 85, 119, 9, 76, 7, 89, -39, -28, -49, -18, -132, 42, 11, 2, 45, -96, 122, 232, 30, 71, 65, 137, 159, 160, 186, 129, 102, 230, -94, 64, 197, 68, 164, -228, 141, 34, 103, 85, 18, -6, -9, -93, 42, 127, 105, -2, 127, 86, 165, 21, 19, 279, 138, 49, -16, 79, -1, -64, 50, 170, 83, 8, 256, 30, 85, -105, -8, 53, 26, -25, -416, -9, 110, -47, -69, 142, 46, -126, 149, 110, 52, -2, 63, -45, 92, -76, -178, 42, -122, 81, -71, 75, 96, 33, -11, -8, 2, 32, 110, 169, 147, -4, 45, 94, -116, 20, 77, 49, -74, 60, -36, -76, 39, -218, -173, -25, -98, -15, 30, 198, 133, -103, 49, 166, 115, -106, 17, 147, 147, 17, -198, -144, 31, -83, 8, 85, 7, 30, -79, 51, 14, -109, -58, 106, -15, 45, -246, -126, 145, -92, -93, 54, 10, 48, -97, -29, 45, -231, 13, -65, -130, 134, -170, -91, -176, -143, 118, -147, 10, -106, -80, 152, 92, 115, -84, 28, -182, 85, 64, -53, 24, -99, -62, 112, 41, 28, 88, -128, -132, 68, -113, -169, 1, -8, 80, -104, 9, -80, 130, 74, 222, -46, 325, 43, -141, 75, -90, 88, -91, 5, 228, 40, 209, -359, -219, 70, -238, 77, -221, -38, 171, -24, 220, 185, -15, -118, 433, -462, -39, -297, -153, -280, -276, -184, -206, -155, 109, 372, 216, 11, -113, -5, 235, -12, -309, 36, 120, -271, -181, -84, 100, -160, -150, 99, -122, -283, -22, -27, -97, 57, 46, -29, -161, 39, -112, 6, 181, -168, -247, 64, -100, -38, 11, -100, -87, 44, -5, 39, -97, 187, -67, -64, -68, -43, 235, 272, -27, -3, 26, -223, 107, 27, -65, -43, -97, 209, 108, -61, 130, 100, 149, 8, 211, 90, 80, -34, -83, -147, -22, -45, -60, 4, -144, -12, 32, -159, -234, 120, -284, -185, -14, -231, -159, -222, 227, -41, 66, 85, -6, -460, 228, -229, -401, 127, -593, -307, -111, 52, -243, -74, 46, 42, 67, -18, 194, -135, -27, -144, -164, 73, -517, -184, -126, -46, 47, 34, -13, -2, -127, 105, 74, -41, -58, -143, -81, -47, -42, -121, -33, -109, -44, 91, -26, 66, -3, 97, -118, 61, -168, 40, 177, -54, 55, 95, 193, -16, 92, 20, -171, 108, -39, -67, -17, -208, 204, 155, 54, 71, 85, 35, 5, 83, -181, -79, 111, -48, 112, 47, 153, 33, 117, 2, -25, -159, -39, 40, -148, 24, -294, -268, 56, 4, 58, -36, -57, 252, -147, 92, -17, -96, -96, 11, 16, -70, -235, -40, -15, 144, -20, 62, -13, -176, -62, 46, -115, 90, 86, 62, 46, 34, -52, 116, 91, 84, -208, 47, -59, 47, -161, 40, -89, -14, -125, -4, 68, 53, -24, 1, 48, 14, 31, -42, -79, 91, -93, -42, -11, -129, 38, -14, -47, 128, 53, -34, -19, 143, -165, 62, -3, -162, -177, 64, 110, -83, 17, 127, 292}
+, {-88, 117, 36, -24, 174, -77, -129, 75, -107, -48, 75, -7, 93, -109, -54, 105, 179, 27, -47, 158, 53, 25, 274, 25, 41, 230, 189, -204, 44, -82, 112, 156, -14, -2, 16, 268, -21, -1, 213, -46, 183, 47, 74, -208, -59, -96, 197, 162, 170, 56, 113, 164, 1, 99, -59, 1, 70, 10, -134, -148, -2, -121, 78, 73, 61, -13, 40, 59, -76, 100, 70, -7, 47, 140, 16, 39, -53, -66, -23, 152, 95, 7, 11, 231, 182, 10, 194, 187, 129, 64, 210, -134, -27, -67, -116, 75, 123, -325, -68, 66, -119, -184, 171, -155, 185, 135, -31, 127, -152, -121, 214, -51, 86, -172, -313, 260, -377, 7, -35, -10, 1, -19, -126, 60, -40, -79, -24, -273, 57, -54, -202, 140, -197, -1, -11, -61, 234, -50, 18, 56, 51, 0, 82, -145, 148, -62, -109, 106, -107, 214, 17, -85, 55, 124, 53, 147, -73, -88, 79, -16, 19, 24, -101, 91, -79, 78, -126, 97, 27, 44, 30, 79, 116, 19, 210, -45, -141, -206, -204, -9, -118, 98, -88, -74, -42, -103, 243, -310, 24, -70, 107, -141, 113, 259, 204, 104, -97, -50, -39, -120, 38, -36, -84, -130, 130, 39, -150, 7, 88, 173, -41, 169, -130, 35, -38, -30, 119, 38, -339, -160, 37, -37, -226, 61, 24, 25, 70, 27, -49, 104, 20, -24, 129, 100, -320, -32, 135, 14, 14, -98, -151, 38, -62, -169, -84, 222, -216, -156, -55, -101, -164, 148, 242, 95, -86, -52, -58, 158, 56, 11, -57, -108, -228, -174, -40, 93, -334, 54, 1, 103, 2, -5, -192, 230, -65, -120, -162, 61, -143, -134, 7, -9, -241, 96, 14, 159, -103, -145, 135, -54, 28, -125, 186, -12, -49, 227, -103, 141, 131, -144, 124, -168, -125, -17, 120, -1, 81, 53, 67, 93, 0, 132, 85, 81, -68, -252, -59, -335, -152, 96, 147, -21, 95, -155, 188, -162, 13, 99, -194, 26, 56, -144, -162, -156, 91, 55, -91, 143, 73, 74, 13, -169, 166, 109, -102, 61, 18, -136, -95, -211, -146, 146, 20, 143, 117, 48, 27, -57, -30, 34, 95, 77, -148, -330, 75, -117, -81, 73, -12, 11, 81, -161, -20, 124, -31, -146, -8, 100, -197, -76, -177, -148, -241, -55, 157, -167, 13, 227, 196, 114, 52, 83, -136, 311, 19, 201, -57, 102, 34, 72, 108, -307, -29, 168, -60, -23, -22, 13, 52, -217, 101, 55, -360, -66, 15, -46, 52, -123, -51, -21, -88, -196, 65, 25, -270, -150, 145, 101, 34, 67, 157, 8, 32, -76, -218, 64, -84, 35, -114, 57, -82, -8, 47, -14, -60, 113, -8, -82, 146, -8, -10, -9, 228, 171, -23, -29, 110, -167, 172, -38, -78, -52, 0, -59, 113, 140, 92, -54, 206, -96, 158, 77, -98, 119, 138, 124, -217, 185, 336, 168, 252, -169, 17, 148, 62, -78, 8, 10, -114, -66, 44, 120, 27, 64, 126, 28, -97, 237, -68, -1, -93, -30, -271, 67, 128, -33, -156, 7, 306, 46, -151, 84, 64, -353, 2, 94, -245, 65, -75, -79, -205, 38, -98, 50, -10, 46, -82, -299, 121, -337, -107, 6, -32, 153, -159, -4, 61, -37, -45, -65, -93, -82, -12, -174, 138, 131, 46, -94, 263, -66, -99, 16, -34, -171, 90, 86, 6, 123, -67, -14, 203, 252, 208, 14, 171, -86, 130, -36, 184, -100, 237, 210, -161, 119, 25, 325}
+, {90, 115, 12, 53, 110, 151, 243, 90, 148, 161, 97, 145, 110, 202, 153, -10, 169, -45, -21, 181, 122, 14, 163, 103, 200, 46, 49, 24, -112, -41, 248, 110, 114, 51, 120, 61, -192, -130, 40, 71, -95, 150, -57, -87, -5, -122, 114, 105, -92, 16, 73, 275, -85, 7, 117, -93, 7, -49, 29, 24, -76, 2, 158, 52, -205, -23, 125, 71, -166, 65, 149, -26, -163, -119, 192, -26, -196, 4, 73, 105, -373, -416, -199, -136, -73, 195, 80, 60, -91, -114, 88, -37, -313, -1, -6, -73, 28, 1, 15, 50, 99, -42, 204, 76, 241, -98, -33, 239, -3, 123, 71, -152, -78, 55, -84, -159, -89, -35, -62, -79, 41, -75, -171, 150, 25, 31, 44, 57, -244, 74, -210, 100, -47, -8, 186, -31, -276, -5, -72, 62, 79, 95, 75, 60, -396, 7, 26, -28, 36, -505, 92, -55, -286, -5, 148, 72, 36, 100, 139, 90, -258, 32, 47, -184, 139, -483, 35, -7, -5, -286, 136, 1, -278, 120, 99, 86, -244, -49, -94, -250, 115, -48, -192, -160, -9, -194, -99, 177, -290, -4, -114, -150, -140, -134, 0, -42, 59, 19, -24, 71, 36, 153, 29, -141, -44, -147, -42, -42, 61, -53, -3, 142, 9, 94, -32, 94, 163, 144, -196, -142, 2, -209, -148, 63, 44, -116, 70, 11, -16, 41, -54, 26, 135, 112, -62, 33, -60, 77, -74, -181, -26, -217, -157, -230, -4, 58, 80, 26, -336, -30, -27, 108, 156, -21, 19, -1, -6, 275, 54, 25, 46, -137, -42, 42, 8, -113, 42, 19, -84, 135, 101, 48, 115, -14, 191, -64, 350, 24, -198, 54, 38, -160, -130, -252, -53, -51, -312, 168, 41, -358, -110, -40, -53, 53, -265, 128, 64, 39, 39, 41, -45, -184, -5, -296, 237, -244, 76, 199, 104, 151, -91, 68, 275, 90, 44, -45, -418, -252, 15, 27, 31, -15, -146, -56, -52, 26, -108, -60, 120, -166, -20, -31, 47, 15, 40, -50, 41, -138, -183, 107, 56, 163, -7, 56, -84, 41, -92, -90, 16, -50, -249, -124, -20, 62, -45, -30, -63, 190, -73, -122, 31, 35, -79, -187, -30, -159, -177, -284, 183, -485, -5, 176, 13, 144, -116, 152, 144, -9, -208, -497, -242, -470, 15, -262, 120, -257, -70, -45, 3, -127, -123, 218, 169, 134, -98, 27, -249, -52, -236, -266, 183, -62, 53, -321, 66, -2, 39, 73, 127, -137, 4, 1, -107, -10, -3, 64, -63, -43, 195, 32, 1, 37, 85, -82, 42, 63, -30, 1, 70, -97, 4, 26, 55, 74, -312, 81, -37, 52, -7, 71, 53, 115, 49, -64, 1, -49, 174, -72, -45, -128, -176, 55, -268, -23, 77, -71, -69, 6, -59, -132, 336, -280, 78, -2, 41, -156, -136, -11, -18, 31, -76, -15, -42, 192, 0, -59, 29, -150, 139, -226, 24, 248, 18, 51, 260, -52, -217, 12, -133, 14, -58, 66, 295, 52, -120, 268, 41, -107, -6, 201, 16, -27, 57, 32, 316, 126, -67, -2, 128, -2, -45, -50, 126, -209, 173, 30, -36, 142, -137, 86, 221, 106, -81, -25, -14, -79, -73, -206, 6, -249, -94, -45, 38, 107, -142, 67, -27, 105, 37, -71, -48, -29, -82, -176, -102, -112, 101, -215, 237, -54, -286, 46, -69, 162, -11, -46, 98, 91, -275, 55, -166, 136, 186, 38, 140, -107, -281, -202, 93, 198, -140, -31, -25, -53, -268, 48}
+, {68, 51, 132, 52, -123, -10, 10, -11, 192, 97, 50, 47, 40, 19, 92, -19, 339, 13, 48, 216, -8, 6, -169, 210, 98, 24, -4, 57, -55, 25, -135, 139, -13, -15, 34, 194, -24, 69, -4, 80, -119, -123, -22, 49, 6, 7, -30, 11, 20, -30, -83, 44, -109, 29, 28, -26, 20, 15, 88, 149, 73, 13, -136, -106, 66, -2, 95, 77, 135, 73, 175, 166, 73, 104, 74, 64, -4, 14, 40, 49, 71, -31, 34, 132, 21, 2, 196, 122, -6, -16, 35, 27, 182, 49, 52, 13, -46, -105, -33, 39, -43, 36, 162, 52, 202, 22, 57, -44, 15, -91, 2, -2, 84, -5, -57, 41, 156, -5, -16, 115, -262, -7, 64, -91, 5, -75, -43, 99, -21, -18, 24, -90, -47, -29, 24, -30, -65, -33, -205, 83, 119, 79, -99, -42, 21, 46, -167, -14, -82, -235, 120, -37, -123, 36, -154, 44, 161, -39, -22, -4, 64, 76, 38, 34, 32, -74, 209, 114, 22, 18, 16, -81, -62, -147, 79, 79, 78, 117, 103, 73, 257, 57, 97, 100, 14, -49, 166, 142, -6, 18, -19, 83, 95, -67, 7, -33, -195, -80, 140, -61, 213, -150, -37, 117, -34, -43, 34, -213, 172, -25, -80, 53, -19, 70, -3, 72, 119, 65, -39, 11, 26, -20, 22, 105, 97, -77, 55, 33, 91, -66, -40, -2, 40, 24, -37, -21, -13, -111, -140, -49, -25, -69, 115, -73, -27, -52, -49, 40, -70, -126, -55, -43, -90, -137, 55, 57, -74, 20, -12, 50, 13, -271, 124, -41, -77, -118, 96, 216, 44, 289, 314, -35, 134, -125, -114, 86, 93, 170, 107, 136, -77, 200, 176, 260, 48, 53, 94, -44, -59, 221, 275, -150, 7, -18, -115, -94, 188, 41, -1, -93, 5, 53, -123, 184, 28, 34, 271, -125, 74, 90, -57, 22, 397, -158, -27, -51, -154, -54, -105, -15, 138, -240, 9, -21, -66, 54, -46, -71, 92, -67, -17, -112, -4, -167, -68, -130, -57, -262, 164, -65, 8, -161, 103, 85, -126, -87, 107, 102, -37, 14, 98, 32, 48, 200, 187, -74, 155, -174, -121, 10, 139, -197, 321, 159, -159, 193, -18, 200, 145, -152, 160, -161, 411, 50, -382, 140, -51, -236, 106, -82, -18, -109, -140, 331, 100, -94, 141, -191, 18, 10, -157, 84, 157, 39, 60, 167, -61, 66, -42, 133, 58, -99, 58, -223, 34, 43, -61, 23, 63, -40, 36, 45, -141, -95, -89, 95, 100, 33, 126, -124, 63, -151, -133, -66, 54, -70, 99, -58, -74, -33, -6, 31, 3, 103, 31, -25, -153, -158, 111, -175, 33, -61, -167, -64, 10, 57, -108, 70, 92, -439, -235, 55, -277, 58, -56, -59, 132, 8, -373, -276, 73, -460, -6, -128, 349, -608, -137, 333, -72, 133, -244, 221, -53, 5, -400, -612, -118, -370, -243, -221, -112, 151, 2, -101, 30, 33, -232, -247, 86, 6, 27, -45, 18, -31, -37, 243, -91, 18, 110, -93, 124, -102, -12, -47, 64, -68, 22, 11, -210, -43, 23, 231, -169, 113, 102, -31, 55, -372, 52, 132, -134, -87, 78, -27, -57, 147, 4, 35, -439, 81, -93, 159, 34, -336, 72, 99, -175, -159, -87, 59, 212, -33, 27, 107, -571, -72, -184, 112, -261, 152, 39, 160, -127, -19, -109, -25, 150, -70, 44, -237, -51, 175, -216, 111, 9, 123, -233, 123, -194, 191, -183, -119, 234, -245, -67, -313}
+, {209, 106, -81, -106, -44, -100, -26, -64, 145, -18, 7, -91, -93, -114, -5, -184, -173, 106, 75, -138, 54, 78, -118, 67, -228, -111, -369, 47, -20, 81, -64, -64, -205, -10, 22, -171, -83, -97, -131, 123, -116, -71, -180, 141, -78, 92, 96, -78, -149, -174, -258, -43, -135, -85, 21, -193, -123, -139, -157, -107, -176, -39, 369, -18, 102, -15, -134, 173, 13, 273, -38, -67, 58, 102, 78, -210, 178, -68, -301, -66, 258, 146, -39, 158, 107, -228, 102, 185, 168, 224, 118, 12, 211, 98, 88, 137, 292, -31, 366, -62, -39, 45, -78, 49, 114, -11, -85, -240, -92, 79, -418, 168, 305, -89, 293, -238, 103, 194, -258, 97, 142, 2, 120, -146, -87, -87, -317, 7, 114, 16, 232, -138, 85, 279, -160, -61, 322, 100, -30, 224, -35, -22, -99, 53, 47, -38, -64, -111, -100, 233, -137, -206, -38, -141, -21, 107, -113, 108, 167, -102, 229, 58, -121, 84, -73, 342, -38, -151, -61, 193, -118, 63, 165, 153, 42, -115, 139, 131, -39, 167, -150, 38, -4, 70, 14, 435, 57, -11, 455, 32, 14, 56, -111, -207, 68, -147, 209, -70, 38, 247, 61, 46, 109, 104, -86, -44, -78, 236, 100, -157, -8, -136, 163, 71, -141, -52, -97, -6, 2, -83, -147, -19, 76, 32, 314, 140, 89, 119, 84, -96, 111, -16, 177, 81, -23, -157, -392, -106, -11, 160, -282, 237, -108, -98, -78, 105, 74, 74, -112, -237, 189, 108, 44, 108, 66, 69, 63, 41, -6, 79, -12, -57, 118, 117, -72, 67, 104, -130, -22, -201, 138, 65, -95, 171, -108, 75, 35, -100, 271, 33, 51, 67, 283, 5, 211, 9, 221, -16, -129, 109, 8, 143, -67, -23, 240, -30, -143, -123, 15, 116, 145, 22, 225, 112, 70, -190, -206, 210, -125, -42, 154, 28, -116, 131, -7, 30, 49, 80, 31, -155, 61, -194, 9, 91, 34, -139, -73, 44, 112, -283, -24, 25, 100, -128, -62, -99, -83, -55, -11, -138, -11, 15, -127, -162, 34, 128, -67, 72, -8, 48, -37, 58, -87, -146, 109, -56, 56, -42, -112, -25, -20, 61, 108, 292, -19, 39, -5, 45, 102, 68, 7, 78, 78, 73, 167, -117, 17, -170, -153, 176, 64, 269, 12, 137, -112, -24, -18, 159, -291, -133, 179, -50, 119, -10, -111, 26, -175, 0, 125, -277, 8, 63, -71, 314, -155, 52, -83, -219, 61, -161, -122, 2, 200, 142, 10, -91, -50, 25, -72, -94, -291, 142, -110, -139, 13, 71, -167, -15, -17, -47, -63, -234, -19, 78, -91, 11, -86, 108, -60, -4, 18, -38, -61, 23, -40, -5, -159, 33, 55, 228, -137, -20, 34, -57, -81, -22, -19, 61, -39, 83, -78, 8, -49, -122, 231, -259, 34, 30, 80, 13, -157, -183, -76, 155, -45, -14, 121, 9, -100, -2, -131, 9, 33, -110, 59, -275, -310, -142, -60, -48, -218, -197, -35, -185, -237, 82, -95, -71, -143, -47, -173, 116, 1, -196, -6, -87, -48, -100, -60, -48, 39, -108, -54, 96, -41, 0, 130, 3, 40, -13, -98, -12, -52, -93, 95, -103, 47, -53, 14, -113, 4, 75, 51, 46, 32, -106, 86, -55, -20, -166, 75, -166, 22, -101, -13, 65, 47, 7, -160, 162, 52, -4, 64, -97, -110, -24, -196, -128, -50, 72, 172, -17, -103, 109, 95, -73, -128, 241, -118, 81, 58, -127, -113, -97, 95, -90}
+, {156, 180, -11, 63, 33, -67, 453, 26, -20, 104, 145, 196, 111, 187, 122, -72, -181, -233, -128, 68, -101, -74, 328, -100, 35, -61, 134, 291, -170, -69, 211, -152, -77, -271, -191, -70, -42, 2, -22, -40, -175, -275, 79, -44, -222, -85, 106, -160, 82, -7, 81, -55, -59, -69, -108, -34, 95, -31, -151, -56, 28, 97, 123, -68, 80, 27, -35, -147, -126, 43, -63, 137, -42, -9, 44, -13, -2, 25, 149, -12, -14, 146, -22, -92, 133, -130, -100, 61, -84, 112, 206, 59, 73, 52, 13, 26, 99, 86, 108, 60, 199, 82, 273, 123, -73, 113, 216, 42, 153, -91, 73, 129, -118, 5, -121, 9, -304, -162, -106, -87, 186, -123, -369, -224, -79, -63, -250, 85, -435, -230, -410, -213, -108, 69, -245, -17, -328, -95, -257, -227, 13, -176, -244, -244, 5, 37, -31, 10, 179, 59, -128, -78, -58, 22, -180, -354, 114, -58, -83, 48, -10, 19, 73, 41, 26, 129, 88, -36, -7, 181, 72, -143, 162, 125, 203, 143, -24, 91, -24, -57, 118, -109, 75, 158, 34, -148, -20, 115, 49, 73, 45, 154, 168, 79, 22, 92, -6, 16, 148, 18, 38, 141, 91, 100, -26, 6, 201, -77, -30, 31, -51, 7, -237, -21, -194, 29, 183, 85, -260, -292, 57, -226, -228, -121, -28, -43, -281, 107, -84, -14, 65, -43, -338, 24, -370, -128, 54, -51, -123, -163, 121, -74, -23, 81, 28, 92, -27, 85, 567, 113, -80, -32, -33, -52, 49, -242, -42, -68, 47, -18, 113, 247, -260, -125, 131, -122, 95, -30, 150, -8, -123, -73, 69, -49, 230, -100, 230, 3, -255, 61, 90, 82, -97, -141, -111, -34, -180, 53, 77, 6, -70, 123, -12, 84, 78, -2, -21, 141, 175, 30, 61, 94, 91, -40, 45, -161, 61, 53, 2, -18, 10, 7, 38, 46, -193, -141, -50, -141, -6, -145, -2, -197, -163, 135, 53, 81, -95, 75, 175, 67, -101, 28, 101, -199, 68, -303, 73, 43, -98, 55, -6, 207, -174, -18, 92, -24, -225, -118, 133, 86, -99, -238, 72, -280, -142, 80, -77, 99, -115, -141, -108, 163, -322, -377, -47, -331, -265, -345, 178, -375, -24, 108, 182, 37, -120, 88, 50, 6, -67, -378, -85, -224, -34, 10, 19, -87, 166, 129, -68, 55, 4, 102, -107, -49, 12, -47, 19, 48, 7, -103, 172, -129, 26, -53, 154, 88, -6, 43, 153, 77, 20, -121, -77, -72, -85, 15, 26, 147, 15, 101, 170, 158, -81, 16, 231, 38, 12, -213, 3, 96, 150, -22, 6, 76, -64, 70, -88, 192, -35, -115, 27, 34, -166, -151, 297, -39, 48, -121, -34, -67, -43, 44, -63, 65, 23, -118, -165, -17, -14, -62, 6, 34, -29, -242, 4, -65, -40, 34, 11, 170, -245, 53, -137, 202, 132, 104, 64, 108, -7, -34, 127, -67, -23, 4, -115, 29, 137, -3, -36, 44, -38, 7, -178, -47, 142, -9, 56, -346, -126, -109, 60, 68, 27, 248, 34, -60, 60, 85, -128, -169, 39, -33, -127, -58, 136, -56, 132, 65, 78, 43, 267, -78, 109, 25, 45, -44, -20, 127, 26, 34, 282, -83, 163, -61, 63, -94, -22, -23, -124, -130, -81, 30, -12, 182, -188, 149, -180, -139, -78, -71, -64, -93, -268, -63, -188, -40, 77, 51, -70, -109, 9, -57, -110, 96, 29, -175, 84, 57, -97, 196, 63, 50, -17, 71, -109, -131}
+, {32, 25, 82, -90, 176, 151, 125, 145, -58, 107, -10, 71, 169, 168, 157, 79, 80, 14, -59, 79, 8, 96, 22, 32, 169, 32, 8, -45, 27, -53, 72, 212, -22, -5, 30, 262, -35, 179, 68, 18, 54, -40, -77, 3, 63, -17, -63, 139, 151, 10, -116, 164, -22, 196, 145, 52, 184, 174, 160, 102, 106, 9, -75, -20, 281, 12, 18, 222, 273, 108, 326, 117, -38, 51, 205, 71, 42, 4, -35, 63, 172, 63, -34, 360, 157, 75, 114, 60, 76, 5, -87, 12, 250, -79, -7, -199, -145, 30, -143, -141, -1, 82, -182, 99, -28, 56, 97, -78, 27, 51, -80, -10, 40, -91, -39, 21, -15, -4, 6, 239, -184, 39, 22, -200, 46, 54, -253, -131, 17, -30, 80, -44, 68, 7, 38, 10, 30, -8, 23, 49, 67, -133, -13, -42, -97, -19, -9, -25, -33, -98, 57, 41, -39, -49, 18, -13, -68, 40, -70, 9, 152, 1, 12, -12, -16, 105, 43, 149, 37, 108, -11, -31, -57, -22, -46, 38, 132, 38, 139, 90, 98, 28, -26, 57, 50, 59, 8, 129, 55, 1, -15, 19, 89, 26, 58, -134, 178, 52, 85, 109, -30, 196, 95, 65, -12, 69, -23, 180, -72, -68, 114, 22, 10, -29, 8, 30, 28, -90, 19, -74, -183, -241, -8, 109, -40, 82, -11, -87, 41, 97, -124, -69, 9, -69, 88, 10, -327, -24, -225, 64, -6, -69, 84, 3, -44, -149, 12, -72, -162, -66, -107, 122, 1, 30, -221, 65, 47, 34, -238, -24, -245, 142, 28, -24, -14, 158, -226, 39, 126, -115, -74, -42, 146, -13, -71, 52, -53, 128, 125, 97, 59, 42, 45, -31, 183, 17, 13, 95, -128, -129, -162, -10, -236, -98, -68, -240, 27, -73, 124, 51, -141, 31, -26, -111, -216, -8, -562, -128, 101, -120, -169, -124, -147, -246, 30, 16, -116, 51, -4, 109, 158, -92, 70, 156, 75, -27, -229, -37, -23, 102, 83, -99, -176, -411, -339, 126, -3, -315, 150, -72, 70, -501, -144, -97, -43, -14, -21, 6, -210, -119, -96, 53, -124, 73, 59, -7, 100, -155, -29, -82, -7, -509, -52, 151, -86, 128, 30, 108, -68, 36, -90, -228, 86, -52, -263, -159, -18, -10, -37, 104, 173, 184, -88, 47, 7, -24, -116, 24, -96, -148, -314, -246, 129, -205, -373, -71, -25, 89, -206, -242, -34, -153, -239, -143, -66, 137, -186, 101, -151, 119, -25, -197, -21, -338, -230, -273, 68, -849, -33, 137, 17, -21, -35, 54, 64, 55, 52, -249, -453, -538, -300, -317, -1, -98, 166, -199, 14, -26, -294, 30, 31, -210, 78, -38, -56, -138, -399, 128, 72, -200, 70, 7, 15, -25, -121, -152, 74, -56, -114, -97, -254, -148, -477, 45, 175, -329, 76, -14, -18, 165, -350, 29, 130, -201, -264, -42, -220, -88, -285, -4, 79, -199, -99, -223, -166, -48, -170, -169, 102, -29, -207, -141, -255, -85, -18, -128, -30, -315, -140, -137, 30, 43, -53, -140, 69, 13, 47, -69, -488, -108, 36, -3, 44, -303, 66, -59, 0, -112, 13, -191, -16, -182, -8, 74, -450, 47, 21, 67, -38, 57, 63, 89, -72, -434, 16, -22, -17, 97, -18, -71, -29, -92, 87, 9, 98, -298, 0, 78, 74, 239, 185, -73, 104, 34, 28, -133, 65, -177, 41, -84, -158, -9, 4, 82, 139, 94, 112, 76, 175, -199, -104, -253, -103, -15, 29, 97}
+, {-87, -44, 31, 86, 61, -82, 86, 32, 87, 233, 134, 214, -161, -13, 102, 31, -75, -22, -158, 102, -64, 87, -99, 129, 31, 12, -4, 66, 34, -70, -50, -100, 114, 12, 22, 362, 0, -112, 126, 66, 19, -65, -361, -43, -51, 10, -270, -121, 139, -49, -69, 211, -270, 141, 105, -37, -64, 8, -225, -75, 47, 35, 66, 40, -1, -66, 23, 229, 0, -62, 178, 205, 28, -66, 40, -72, 3, -69, 22, 60, 36, -48, 85, 177, 26, 27, 188, 204, -28, 143, 178, -76, 45, -41, -31, 210, 32, -71, 34, 83, -41, -51, -230, -1, 115, -38, -89, -103, 8, -124, -154, -31, 234, -76, 326, 161, 274, 193, -208, 221, -24, 112, -187, -395, 60, -273, -340, -143, 40, -120, 34, 15, 151, 173, -54, 0, 17, 113, -217, 24, 17, -110, -1, -32, -180, 50, -253, 63, -21, -97, 92, -10, -249, 77, -46, 152, 51, 62, 174, 9, -262, 80, -95, -135, -81, -129, 200, 8, -223, -105, 134, 195, 225, 66, 284, 26, -112, 40, 19, 16, -7, -101, 123, 139, -161, 41, 301, 217, 227, 138, 386, 102, -87, -42, -97, -77, -69, 78, -114, -88, 52, -110, 60, -50, 36, -235, -54, -51, 171, -212, 148, 3, 295, 70, -69, 120, 25, 40, 58, -48, -73, -244, -98, 106, 215, -85, 148, -74, 125, -116, -83, -104, -26, -49, -61, -49, -183, 43, -156, 43, -110, 74, 49, -75, -122, -94, 49, -154, -96, -56, 21, 58, -91, 34, 21, 79, -259, 149, -81, -169, 0, -269, -3, -133, -149, -263, 224, 148, 144, 53, 142, 10, -9, -4, -54, -167, -18, -251, 0, -58, -115, -112, 82, 148, 82, 130, 18, 66, -133, -95, -187, -76, -146, 11, 8, -20, -14, -44, 44, 24, -142, 41, -37, -215, -60, -106, -108, 73, 4, 117, -24, 65, -115, 131, -53, -68, 145, -194, -231, -40, 117, -51, 47, 301, -15, -195, -31, 38, 34, 53, -199, -80, 34, -256, -109, -9, 73, 123, 147, -81, 11, 55, -48, -94, -99, -9, 8, 31, 88, 44, -22, -18, -10, 11, 36, -149, 12, -215, 115, -20, -36, -24, 71, 34, -38, 191, 87, 36, -46, -79, 25, -32, 68, -163, -122, 172, -18, -189, 225, -145, -3, -160, 117, 77, -107, -2, 2, -174, -136, 5, 8, -58, -63, -10, 31, -13, -114, -65, -40, -148, 44, -69, 47, -57, 75, 83, -23, 66, -65, 43, 39, -149, -140, -199, -16, -1, 38, -111, 42, -1, 15, -343, -91, 119, 34, -197, 89, -85, -106, 12, -174, -122, 13, 40, 56, 25, -81, -18, -46, -166, 48, 49, -233, 83, -119, 39, -58, 78, -17, 66, 26, -103, -206, 55, -28, -230, -37, -143, -82, 50, -59, 97, 133, -68, -39, -16, -58, 62, -228, 31, -103, 88, -9, 115, -113, -54, 25, 23, -95, -102, -152, -146, -71, -143, -133, -49, 17, -64, 238, -42, 75, -72, -331, -110, -109, -208, -114, -158, -36, -51, 102, -203, -20, 2, -114, -212, -16, 34, -313, 88, -14, 40, -60, 30, 78, -37, -84, -551, 2, -35, -222, -280, 41, 28, 133, 164, 24, 93, -231, 106, 63, 2, 16, -211, 58, 34, -161, -80, 17, -35, 33, 111, -16, 2, -367, -230, -138, -86, -88, -12, 82, 61, -131, -77, -90, 62, -32, -19, -7, -12, -76, -3, 32, 214, -109, 71, 47, 305, 16, 59, -118, -44, -48, -102, 40, -104}
+, {219, 179, 97, 12, 109, 99, -11, 66, 78, 242, 105, -43, 192, 22, 30, 163, 215, 55, 39, -99, 68, -50, 30, 160, 209, 59, -1, 31, -25, 24, -129, 96, 114, 34, 35, 19, -46, -25, -6, 31, 61, 41, 114, -101, 0, 37, -183, 42, 49, -5, -54, -103, -64, -24, 97, 158, 25, 17, 75, -15, 7, 7, -30, -69, 101, 22, -60, -79, 101, 45, -18, 193, -22, 28, 78, 136, -131, 71, 113, -99, 115, -56, -60, -111, 16, -135, 21, 190, 49, -82, -14, 48, -2, 46, -72, -94, 64, -58, 72, 165, -113, 120, 63, -22, -93, 260, 32, 27, 146, 66, 49, -26, 187, -22, 142, 7, 35, -9, -48, 89, -195, -71, 48, -6, 33, -99, -91, 47, 72, -82, 10, -3, 44, 26, -23, 111, 103, -70, 6, -96, -90, -193, -105, -38, 73, 51, -2, -69, 73, 132, 74, -45, 11, -60, -123, 7, 81, 19, 30, -27, 49, 24, 49, 58, 60, 435, 42, -65, 23, 42, -80, 66, 134, 10, -75, 25, 66, 105, 16, 2, -42, 240, 120, 34, -24, 111, -126, -175, -20, -141, -54, 11, 208, -264, -144, 78, -293, -135, 71, -207, -113, -212, -4, 104, -306, 5, -62, -221, -66, -272, 120, -369, 86, -76, -120, 23, -57, -112, 63, 1, -191, -52, 44, 45, 20, -11, 177, -295, 119, 42, -188, 59, -205, -147, 157, -32, -49, -71, -116, 189, -60, -55, 68, -72, 44, -190, -22, -109, -58, -51, -216, -198, -63, -164, 63, 11, -124, 13, -82, 66, -44, -277, 140, -5, -13, 3, -158, 72, 110, 53, 168, 40, -172, 203, -271, 23, -145, -33, 146, 124, -116, -143, 94, 425, 59, 149, 247, -84, -21, 336, 267, -175, -46, -199, -85, -306, 128, -471, -81, 53, 49, 98, -59, 171, -265, 168, 38, -433, -317, -112, 123, -227, 100, -31, 108, 310, -44, 152, 174, -39, -129, -298, -392, -4, -66, 23, -13, 30, -216, -155, 275, 89, -253, 11, 173, -28, 19, -342, 155, -88, 151, -324, -31, 79, 7, -263, 66, -117, -125, 95, 117, 9, 15, 40, 83, -252, 8, -207, -41, 86, 127, -433, 139, 155, -141, 38, -109, 123, 16, -31, 101, -243, 145, -127, -268, 37, -53, -408, -120, 76, 39, 12, -218, 75, -84, 103, 50, 56, -30, 53, 0, -7, 42, -7, 40, -10, 75, 192, -156, 13, 5, 139, 40, 94, -4, 67, 79, -63, 104, -10, -43, -100, 206, 345, -87, 67, 9, 89, 52, -7, -111, 11, 30, -145, 68, 11, -104, -21, 179, -21, -48, -1, 129, 33, -138, -23, -138, -30, -94, -239, 108, -34, -247, 65, -21, -38, -225, 24, 37, -37, -4, 24, -115, 37, 38, -118, 48, -91, -317, -151, -133, -94, -272, -28, 156, -505, 30, 28, -177, 224, -74, 114, 19, -77, -238, -278, -175, -157, -110, -154, -116, 43, 37, 76, 19, -152, 13, -48, 17, -8, 36, 43, -125, 40, -5, 83, 71, 234, 113, 23, 126, 5, -4, 89, 61, -16, 84, 5, -52, 28, -4, 129, -32, -13, -11, 18, 77, 22, 17, -37, 49, 19, 0, -9, -134, 14, -8, 50, -150, 49, -151, 115, -165, -34, 68, -27, 60, -17, 4, 13, 80, 14, 1, 26, -230, -25, -188, 15, -97, -2, 73, 78, -189, 45, -23, -56, 53, -50, 32, 49, -237, 129, -129, 164, 47, 130, -169, 128, 50, 199, -97, -122, 112, -32, -126, -152}
+, {43, 9, -12, 161, -87, -199, 130, -145, -52, -226, -49, -219, -48, 87, -46, -78, -310, -60, -274, -13, -201, 30, 120, -35, -163, 9, -203, -104, -49, 29, 216, -43, -196, 61, 44, -290, -26, -43, -63, 74, -235, -4, 117, 82, -27, 121, 59, 87, -46, -34, 29, -211, -14, -299, -64, 107, 3, -66, 181, 128, -147, 75, 127, 29, -265, -39, 1, -290, -153, -247, -217, -232, -47, 14, 18, 57, -74, 53, -34, -135, -11, -72, -117, -96, 102, 116, -188, 26, -25, -92, 26, 89, 65, 4, 59, -103, 130, 73, -79, 42, 215, 65, -55, 19, 178, 25, -11, -30, 47, 33, 0, 23, -25, -15, 273, 92, 10, 96, 104, -59, -134, 18, 94, 52, 98, 86, 151, 50, 2, 163, 184, 100, -51, 18, -20, 68, -84, 25, 111, 172, -3, 198, 22, 66, -99, 17, 37, -320, -23, -74, 55, 88, -166, -129, 219, 165, -192, 256, 105, 91, 13, 55, 48, -96, 163, -410, 156, 83, 18, -291, 74, 31, -219, 40, -190, 61, 188, 35, 223, 13, 562, -186, -113, 77, 99, 104, -127, -16, -178, -47, -229, 207, -232, 48, -48, -250, -157, 18, 108, -81, 25, -103, 165, -54, -178, -31, 105, 23, 22, 184, -50, -84, 64, -129, 37, -58, -45, -83, 86, 54, -41, 86, 52, 169, 69, 120, 103, -4, -57, -191, -13, -114, 62, -81, 145, -35, -171, 68, -39, 151, 33, -41, 119, -20, -30, 61, -70, -42, 45, -82, 327, 58, -148, -8, 106, 21, 187, -83, 97, -94, 92, 252, -7, -36, 59, -16, -65, -147, 18, -132, 31, -1, 271, -50, 65, 186, 253, -1, 30, 217, 41, 388, 58, -235, -114, -103, -47, -15, 22, 61, -84, 178, -41, 106, 15, 71, 153, 92, -39, 100, 98, 69, -53, -62, 4, 17, -19, 213, -111, -35, -53, -66, -192, 145, -203, 121, 264, 14, -155, -84, 125, 112, -80, 280, -151, -137, -5, -9, 104, 75, -162, -187, 126, -183, -301, 25, -41, -20, 24, -81, -77, 101, -85, -214, -124, 62, -141, 53, 36, 136, -136, -56, -64, -38, -3, 86, -94, -174, 209, 97, 45, 13, 86, 91, 31, -36, 68, -55, 19, 6, 25, 104, 31, -72, 134, 127, -51, 294, 130, 83, 178, -72, 321, 100, 8, -349, -100, -99, 235, 63, -20, 276, 73, 275, -6, 31, 21, -251, -97, -22, 32, -396, -12, 94, 12, 50, -147, 58, -30, 68, 21, -135, -66, -409, -164, -126, 101, -155, -39, 20, -16, 91, 4, 102, -43, 92, -41, -90, 88, -143, -11, -110, -78, -62, -6, 33, -188, 126, 82, -33, -161, 88, -14, -23, -97, 13, 70, -98, -95, 150, 58, -25, -54, 3, -3, 50, 15, 103, 55, 101, 150, 252, 207, 84, -8, 117, -78, 35, 96, -57, 174, 79, -140, -17, -11, 140, 135, 181, 72, 70, 132, -320, -64, 106, -217, 80, 91, 277, 11, 55, 125, 17, -42, -12, 19, -278, -120, -660, -51, -15, -60, -23, -25, 11, 142, -119, -70, -53, -245, -133, -8, -6, -85, -342, 79, -16, 84, -37, 12, 61, -235, -38, 16, 11, -81, 1, 23, 74, -5, 201, 364, -28, 175, 0, 24, -93, -153, -206, -51, -13, 100, -7, -19, 97, -196, 154, -27, -63, 22, 24, 5, 55, -6, -299, 30, 77, -123, 43, 69, 162, -229, 148, -107, -57, -112, -120, 197, 134, -170, -140, 2, 93, 29, -32, 80, 50}
+, {-41, -9, 37, -12, 39, -65, 184, -2, 69, 69, 57, 152, 149, 1, 118, -72, -38, -104, -51, -18, -46, -39, -30, 128, 23, -43, -146, 134, 3, -30, 210, -133, -171, 20, 117, -178, 24, 138, -124, 149, 25, -138, -151, -41, 47, 114, 87, -178, 26, -49, 30, -58, -14, 212, -25, 72, 119, 32, 157, 52, 29, 76, 47, 153, 253, 2, 101, -46, 93, 119, 341, 205, 35, 27, 95, -41, 81, -33, -135, 42, 73, 64, 59, 270, 77, -41, 202, 5, 89, 114, 135, 52, 29, 16, 114, -26, -79, -71, -13, 70, 76, -159, 212, 58, 162, -135, 65, 53, 12, -45, 190, -190, -28, 26, 137, -350, 94, -16, -77, 178, -21, -48, -10, -81, -39, -306, -148, 92, 11, -48, 67, 27, 113, 29, -106, 77, -117, -48, 19, -266, -1, -31, -374, 95, 42, 45, 98, -40, 70, 50, -67, 61, -1, 53, 15, 85, 90, 53, 75, 97, -5, 34, -5, -14, 25, -26, 62, 98, -102, 67, 111, 20, -32, -1, 225, 14, 146, 183, 39, 129, 109, 15, 111, 46, 55, -23, 136, 184, 18, 83, 71, 93, 74, -18, 143, -65, 136, -44, -64, 29, 168, 134, -228, -215, -79, -24, -52, 72, 127, 38, -28, -8, -9, 19, -114, 35, 154, 24, 17, -7, 10, 54, -76, -12, 123, -53, 77, 11, -44, 93, -135, -29, 72, 55, -95, -120, -52, -164, -290, 5, 85, -103, -10, 109, -33, -64, -33, 13, 290, 38, 224, 157, -73, -21, 157, -127, 64, -243, -169, -83, -40, -47, -34, -36, -30, -135, 140, -23, 157, -36, -157, -35, 230, -173, -41, 61, 215, 7, 39, 293, 27, 51, 85, -282, 31, -391, 142, 42, 154, -99, 62, 104, 81, -8, 181, 222, 6, 82, 37, -165, -91, -148, -129, 43, 90, -4, -148, -27, -72, -6, -146, -11, 163, -36, -64, -68, 10, -55, -56, -122, 186, -303, -84, 291, -124, 167, -286, -17, 330, 229, -176, -227, -46, -281, -315, -210, 73, -93, 53, -97, -57, 230, -99, -100, 140, 64, -88, -29, 53, -64, -87, -133, 30, 95, 34, 36, 133, 72, -182, 26, 47, 120, -65, -11, 110, 197, -77, -54, 122, -329, 24, 91, 136, -24, -219, 50, -14, -135, -93, 85, -57, -68, -28, 123, -77, -84, 13, -103, -7, 16, -94, 101, 8, -66, 42, -13, 55, 120, -116, -159, 84, -286, -41, 92, -13, 21, -61, 61, 49, 104, -156, -194, -26, -315, -346, -114, 115, -312, 31, 58, 164, 119, -266, 61, 174, 35, -83, -330, 6, -245, -289, -328, 12, -139, 39, -55, 52, 136, 8, -115, 50, 10, -137, -54, 37, -145, -151, -130, 100, -400, 1, -72, 85, 191, -31, -8, 38, 28, -86, -245, -4, -610, -299, -138, 318, -382, 145, -67, 38, 125, -377, -142, 70, 161, -128, -257, -101, -209, -266, -128, -102, -126, -54, -139, -34, 137, 43, -63, 71, 204, 13, -9, -188, -41, 53, -194, 118, -181, -303, -45, 185, 23, -10, 52, 140, -133, -29, -60, -125, -120, 21, 29, 31, -11, 8, -22, 53, -59, 60, -18, -154, -24, 21, -10, -136, -280, 60, 84, -30, 104, 85, 37, 18, 4, 0, 111, 22, -45, -154, -187, 55, -124, -11, 10, 31, -348, 43, 25, -44, 226, -81, -68, 3, 76, -246, -170, -38, -149, -121, -278, -7, -48, 28, 6, 23, 0, -63, 54, -12, -172, -45, -28, -211, -13, -42, -74}
+, {-128, 23, -191, -138, 14, -61, 57, 95, -66, -300, 24, 34, 77, -24, 193, -26, 68, 48, 160, -269, -20, -39, -48, -7, -150, -56, -90, 122, -101, 66, 236, -175, 35, -76, -133, -193, -113, -174, -143, 33, 99, -14, -81, 14, -99, 7, 17, -243, -114, -35, -144, -44, -10, -36, -84, 260, -149, -82, -121, -7, -20, 96, 23, -363, 103, 5, -124, -77, 80, 38, -145, 118, -74, -94, -38, 95, 98, -34, 174, 97, 151, 21, 5, -83, 24, -28, -30, -60, 87, 5, -31, -44, -157, -5, 192, -53, -48, 66, 256, -150, 131, 16, 97, 91, 40, 48, -119, 247, -6, 266, 15, 18, -44, 42, 155, -181, 59, -22, -33, -131, -48, -52, 161, 77, 23, 94, -22, 66, 26, 34, 47, 44, -127, 72, -43, -61, 107, -51, 102, 23, -35, -44, -76, 38, 131, -38, -21, 2, 39, 155, 4, -139, 63, -8, -6, -74, 93, -56, -116, 56, 146, 9, 67, 188, 102, 232, 3, -162, 86, 212, -74, -127, 6, -14, -60, -28, -48, -43, 25, 45, -26, 77, 38, -45, 69, 53, 97, 15, -168, 58, 93, 8, -140, 229, 138, 75, 71, -11, 25, 61, -29, 133, -5, 136, 150, -21, -28, 192, 98, -3, -72, 102, 153, -2, -25, -10, -34, 73, -32, 54, 61, -50, 15, 105, 102, -66, 39, 85, 64, 12, 38, -87, 88, 17, -81, 0, 0, 14, 22, -3, 33, 233, 45, -16, 65, 144, 43, 80, -57, 131, 95, 88, -5, -26, -32, -30, 95, -129, 42, 112, 173, 235, -43, 30, 75, -71, 54, -16, -187, -1, -20, 15, -117, -7, -64, -120, -86, 18, 22, -175, 47, -48, -205, 35, 66, 138, 70, -11, 241, -34, -82, 173, 46, 1, 140, 215, -146, 7, 123, 20, -84, -5, 83, -45, 206, 11, 3, 113, 20, 97, 70, 240, 127, 75, -17, -57, 137, -19, 72, -93, -158, 183, 110, -48, -94, -42, 54, 29, 176, -54, -3, 11, 43, 9, 181, 33, 61, 59, -266, 21, -22, 165, -1, -95, 63, -41, -121, -85, -84, 84, -131, -117, 40, -66, 73, 40, 114, 55, 11, 32, -9, 125, -162, -117, 18, -134, -70, -16, 98, 56, 68, -29, 51, -110, 71, -202, 149, 229, -7, 136, 147, 53, -3, 22, -2, 10, -184, 27, -153, 34, 100, -71, -120, -52, -8, -15, -37, 155, -19, -111, -56, -12, -381, 203, -137, -183, -15, -42, 71, -157, 2, -9, 102, 98, 39, -134, 108, -120, -108, 154, -146, 17, -45, 47, 85, 120, -17, -66, 122, -90, -125, -8, 107, 52, -286, -17, 18, 159, -37, 251, 54, 3, -6, -263, -79, -255, -107, -441, 36, -311, -225, -3, 207, 48, 43, 11, -58, 73, -67, -37, 140, -25, -23, -27, 67, 57, -85, 38, -89, 138, -63, -103, -26, 218, -34, 38, -66, -41, 4, -165, -198, 301, -99, -10, 290, -34, -185, 3, -234, 98, -111, 34, 317, 112, -83, 97, 124, -65, -33, 154, -190, 60, -5, 18, 25, 217, -172, -113, 240, -3, -98, -269, 183, -512, 27, 100, 83, 405, -263, 32, 510, 59, -74, -293, -104, -212, -223, -648, 294, -354, 284, -29, 231, 347, -303, -198, 262, -2, 116, -102, -137, -88, -98, -302, 278, -224, 27, -127, 275, -28, -192, -142, 33, -40, 259, 6, -382, -150, -119, 51, 55, 120, 153, -76, 63, -81, 231, -19, 104, 34, 213, 184, -242, 88, -55, 193}
+, {321, -29, 226, 108, 56, -37, -82, 69, 61, 200, 201, 42, -35, 57, -15, 126, 106, 1, -52, 183, 2, -46, -70, -6, -23, 145, 204, -223, -26, -33, 44, 452, -19, 16, 49, 111, -93, -97, 375, -83, -282, -17, -27, -204, -30, 46, -223, 270, -210, 108, 138, -157, 110, -237, 8, 2, -66, 11, 154, 85, 84, 25, 40, 113, -179, 67, 134, -26, 84, -190, 120, -31, 49, 108, 94, 58, -60, 58, 0, 119, 178, 55, 86, 102, 57, -33, -62, 69, 137, 91, -86, 45, 196, 159, -193, -1, 52, -41, -186, 196, -145, -27, 6, 20, 10, 39, -115, 94, -10, -50, -118, -65, -169, -40, -280, 240, -190, 68, 51, 82, -283, 47, -153, -111, 72, 16, -73, -141, -201, 5, -165, 47, -26, -159, 66, 42, -585, 61, -138, -61, 41, -166, -54, 5, -179, 58, 33, -39, -84, -387, 59, 76, -194, -64, 147, 103, -87, -85, 70, 55, -227, 20, 37, -204, -21, -204, 159, 242, -13, -160, 248, 87, -262, 35, 316, 75, -52, -7, 49, -118, 331, -20, -55, 45, -42, -158, 58, 82, -46, 183, 27, -8, 177, -205, -4, 137, -217, 52, -97, -225, 237, -95, -53, 60, -129, -70, 32, -90, -35, -135, 62, 10, -53, 93, 73, 146, 10, -35, 86, -16, 45, -104, -4, -131, -54, 36, -49, -59, -21, -110, 13, -37, -122, -183, 72, 5, 40, 2, -63, 66, 3, -99, -28, 9, -149, -95, 154, -144, -79, -80, -184, 69, -37, 134, 77, 65, 3, 31, -134, -1, -243, -126, 125, -263, 27, -35, -40, 267, 293, 180, 284, -22, 222, -169, -199, 25, -52, 23, 176, 100, -68, 136, 266, 49, 36, -32, 231, 106, 13, 361, 255, -63, -44, -95, -130, -272, 181, -192, -196, -106, 38, 47, -69, 94, -142, 103, 106, -314, 101, 56, -97, 8, -129, -5, 22, -41, -98, 53, -23, 5, -50, -3, 112, 55, 5, -77, 29, -86, -391, -44, 30, 113, 64, 86, -39, 61, -129, 52, 152, -13, -112, -53, -56, 39, 47, -110, 67, 8, -9, 2, -7, 73, -126, 65, 92, 10, 115, -126, -122, -32, -21, -193, 59, 51, 15, 222, 39, -6, -118, 180, 0, -249, 134, -95, -349, 98, -28, -66, 133, 72, -17, 57, -94, 105, 269, 22, 175, 80, 154, -52, -47, -120, 94, 121, 92, -195, -3, -154, -123, 453, 204, -172, 140, -47, 141, 66, -9, 91, 113, -20, 32, -29, -104, -26, -108, 157, -63, -240, 35, -8, -113, 34, 41, 62, 30, -40, 42, -42, 81, -14, 0, 26, -1, 346, 137, -26, -33, 13, -140, -43, 71, 12, 96, 13, 46, 0, -176, 199, 70, -11, 164, -20, 68, 13, -133, -107, 110, -38, 8, -352, -30, -201, -181, -26, 177, -118, 32, 82, 189, 1, -71, 268, 178, 117, 16, -151, -413, -162, -84, 95, 280, -4, 23, 335, -44, -248, 4, -63, 129, 106, 53, 59, -68, 191, 73, 221, -60, 200, 97, -22, -30, 30, -13, 89, 2, -6, 76, 107, 21, 100, -18, 161, -19, 404, 105, -25, 188, -53, 175, -100, -202, 80, -25, 63, 111, 53, 20, 134, -3, 278, -56, 40, 15, -33, 103, 142, -136, 148, -34, 17, 64, 18, 8, 185, 10, 296, 111, 172, 15, 27, 130, 164, 141, 132, 0, -46, 183, -66, -38, -57, 226, 51, 159, 359, 370, 51, 20, 236, 115, 290, 17, 37, 137, -129, 90, 75}
+, {101, 107, 60, 31, -81, -70, 187, 53, -172, -113, 169, 204, -26, -18, 178, -41, 146, -186, -25, -18, -68, -164, 198, 118, -6, -153, -132, 160, -133, 1, 267, -150, 79, 15, 164, -189, 15, 94, -51, -55, 82, -125, 168, -63, -12, -99, 238, -1, -95, -26, -15, -80, 123, 50, -194, 20, 41, -138, -146, 46, 5, 9, -61, 36, 147, 14, 35, 6, 248, 188, -176, 116, -33, -132, 31, -27, 203, -10, 135, 117, 40, 29, 7, 45, -69, 10, 92, 102, 18, 104, 7, -17, 37, -13, 147, 9, 107, -84, 78, -29, -91, -41, 40, 19, -30, 105, 94, 207, -105, 16, 106, 192, -3, -70, -75, -45, -83, -51, -47, -142, 129, -267, -161, -189, -89, 103, -142, -49, 136, -38, -76, -134, 2, 45, -239, 201, 293, -52, -91, -311, -71, 23, -315, -165, 40, -80, -55, 113, 118, 256, -117, -78, 124, 70, -155, -362, 242, -90, -170, -85, 134, -20, -31, 24, 28, 218, 17, -250, 56, 166, -148, -180, 64, 21, 3, -12, 49, 5, -7, -63, 145, 142, -36, 6, -66, 66, 60, 46, 157, -81, 20, 154, 153, 216, 15, 84, -114, -68, -225, -12, 216, -154, -89, 35, 137, 88, -77, -39, 23, -120, 59, -89, -23, 40, -217, -33, 81, 77, -246, -577, 94, -248, -340, -60, -44, -230, 55, -29, 124, 93, -175, 102, -9, -39, 43, -221, -35, -266, -147, -88, 36, 6, 38, 4, 143, 5, -102, -138, 219, 178, -208, -24, 92, 108, -240, -21, 56, -187, -3, -11, -50, 7, -5, -147, 54, 171, -181, -237, -155, -124, -292, -25, 165, 4, 41, -7, -268, -59, -7, -111, 19, 60, 49, 244, -41, 186, -16, 103, 19, 71, -38, -139, 76, -2, 72, 17, -100, 23, -39, 39, 97, 14, -55, -29, 11, -278, -45, -28, 193, 73, -60, 67, -40, 38, 70, -4, -89, -199, 23, -75, -50, 19, 70, -63, 171, -58, 102, 220, -440, 1, 189, -12, -107, -131, 71, 83, -43, -66, -156, 57, 72, -203, -2, 172, 89, -211, -139, -175, -242, -87, -57, -165, -19, -128, -107, 48, -120, 167, -9, -51, -6, 134, -146, -211, -31, -240, -51, 7, 154, 144, -67, 33, -9, 107, 64, 14, 7, 129, 34, 113, 136, 111, 61, 29, 115, -30, -136, 57, -186, -98, 203, -205, -192, -43, -30, -19, -61, -51, 17, -59, -104, -54, -313, 145, -116, -28, 50, -34, 85, 18, -75, 104, 47, 54, -5, -143, 85, -58, -22, 145, -128, 0, -98, 26, 362, 84, 174, 7, 75, 85, -100, -249, 35, -79, -51, 118, 51, 185, -250, 64, -4, -44, 55, -122, -38, -143, 110, -256, 4, 41, -144, -235, 44, 94, -220, -24, -60, -166, 96, 85, 120, 1, 83, -214, -12, 186, -51, -128, 115, -103, -74, -16, -281, 122, -16, 94, 175, 126, -1, 154, -109, 208, 46, -12, -58, -139, -29, -15, 27, -50, -69, -10, 129, 59, 12, 106, 197, -115, 104, 33, -202, 103, 65, -118, -38, 69, 25, -71, -12, -27, -27, -146, 16, 6, 33, 38, -56, 159, -29, -38, 244, 63, -36, -63, -69, -176, -34, -193, 90, -97, -36, -99, 43, 114, -121, -187, -1, 18, 166, -18, -150, -79, -14, -24, 186, 377, 85, -208, 156, -31, 153, -247, 72, 228, 60, -43, -278, 177, -57, 168, 233, 64, 144, 98, 59, -157, 168, 14, -35, 198, 21, 161, -189, 88, -37, -2}
+, {13, -57, -98, -88, -59, -161, -10, 14, -129, -217, 16, 40, -78, 10, 142, 209, -99, -48, 47, -69, 31, -123, -176, 67, -236, 5, -73, 25, -49, 75, 146, 29, -41, 22, 96, -322, 97, -68, -66, 155, -29, -78, 75, -3, -14, -10, 133, 124, -105, 3, 42, -126, -14, -35, -138, 71, -107, -37, 43, -39, -18, -7, 16, 69, 26, -113, -147, -50, -1, 2, 12, -26, -33, -155, 56, 34, 36, -36, 8, -80, 186, -149, -12, -20, 9, -25, 157, -22, -82, -254, -153, -148, -186, -95, -41, 221, -32, 104, 352, 59, 201, -47, -13, 45, -15, -43, -84, 137, 42, 130, 45, 278, 145, 83, 108, -94, 55, 65, 71, -135, 115, 49, 160, 358, -78, 159, 152, 71, 96, -18, 42, 62, -105, -71, 7, 111, 94, -52, -47, 173, -5, 36, -8, -71, 155, -37, -46, 51, -130, 123, -111, -46, 187, -57, -171, -300, -73, -152, -261, -36, 61, 88, -30, 18, -29, 139, -210, -174, 127, 26, -237, -164, -71, 79, -420, -83, 92, -12, 24, -104, -14, -16, -21, 43, 28, 107, -40, -77, -150, -51, -248, -73, -107, 107, 58, 112, 75, -200, 147, 169, -153, 19, -59, 136, 78, 241, 125, 110, 95, 70, -24, -15, -89, -19, 33, -31, -160, 3, -14, 19, 183, 166, 23, 71, -9, 36, -36, 150, -117, 158, 98, -21, 184, 69, -11, -98, 239, -39, 71, -15, 113, 25, 81, 101, 96, 84, 18, 98, -77, 108, -71, -65, 60, -126, -147, 36, 124, -104, -40, 117, -34, -71, 45, 109, 89, 103, -386, -202, -132, -11, -60, -72, -165, -302, -143, 80, -203, 91, -180, -48, -58, -111, -356, -97, -303, 11, -134, -346, 146, -175, -87, 204, -44, -118, 60, 100, -52, -23, -91, 24, 15, 94, 58, -59, 165, -26, -43, 100, -126, 4, 92, -65, 91, -58, -116, 104, 290, 49, 38, -101, -169, 91, -152, -39, -7, -17, 77, -96, -32, -168, 66, 121, 68, 256, 179, 25, -79, -92, -70, -135, -10, 103, 72, 131, -218, 16, 165, 138, 20, -6, 37, 38, -59, 54, 58, 56, 92, -185, 115, 38, 43, 23, -138, 72, -265, -17, 120, 105, 38, 98, -5, 9, 19, 86, 103, -201, 82, 42, -213, -111, 96, -155, -87, -26, 10, 9, 94, 49, -129, -207, 73, -179, -17, 28, -1, -46, -25, 158, 116, 205, -221, 170, -196, 208, -118, -147, 90, -148, -123, -252, -35, 106, 109, 33, 29, 25, -228, 260, -32, -178, -411, -294, -38, -28, 194, -129, -27, 184, 93, 140, -119, 2, 79, 136, -87, 61, -76, 123, -50, 21, -13, 14, 72, 54, 56, 26, -324, -34, 81, -25, -45, -21, 36, 58, 99, 60, 7, -8, 36, -26, 75, -113, 144, 41, -29, 39, -124, 71, -173, 132, -226, -201, -122, -15, -101, -73, 158, -73, 19, -222, -116, 462, 58, -73, 437, 85, -61, 104, -57, 127, -52, -123, 491, -19, -240, 512, -7, 162, 290, 196, -31, 109, -70, -30, 24, 189, -217, -91, 489, -97, -197, -43, 69, 94, 151, 69, 1, 165, -34, -61, 207, 320, -110, -154, 34, -137, -86, 51, 211, 160, -109, 99, 130, 366, -26, 28, 212, 92, -35, -22, 46, -99, -18, -107, 244, -81, 145, -100, 108, 91, -121, -80, 60, -8, 5, 115, -65, 49, -58, 27, -76, 172, -158, 15, -112, 23, -47, -277, -13, 150, -43, 55, -50, -84, -63, -89}
+, {70, 82, -105, 158, -19, -87, 67, -23, -16, 116, -21, 90, -20, 14, 121, -44, -59, -137, -20, 53, -195, -101, -62, -58, -66, -109, -159, 78, -18, 48, 127, -179, -243, -31, 12, -234, 163, 71, -172, -86, -215, -242, 93, 98, -36, 86, 82, -53, -263, 0, -118, -236, -47, 34, -195, -29, -250, -196, -15, 32, 3, 73, 69, -6, -25, 61, 17, -281, -31, -74, -88, 53, -6, 50, 61, 46, 29, 37, -82, -210, 35, -41, -13, 6, 31, -130, -134, -52, 8, 58, -36, 84, 198, 43, -74, -102, 102, 8, -144, 64, -175, 32, 125, 24, 47, -55, -91, 136, 12, 27, 7, -129, 75, 48, 180, -41, 1, -100, 37, -24, 47, -31, -26, 60, 3, -15, -149, -53, -28, 48, 136, 2, 64, 80, -41, 70, -313, -10, 57, -25, 15, 177, -213, 73, -117, -4, -34, 14, -188, -201, 91, 35, -62, 65, 39, -96, -46, -32, -71, 2, 103, 6, 99, -116, 116, -173, -20, 129, -90, -188, 101, -4, -72, 2, 7, 4, 164, 65, 114, -73, 323, 50, 3, 53, -11, 100, -129, 79, -96, 99, -134, 247, 62, 69, -105, -45, 37, 15, 25, 41, 104, 7, -120, -47, 94, -75, -45, -56, 146, 124, -21, 103, -50, 7, 19, 100, 112, 81, 12, -150, -9, -95, -172, -67, 181, -260, 218, 30, 96, 2, -55, 66, 34, -36, 127, -18, -290, -261, -198, 67, 83, -253, 121, -35, 103, -208, -45, -154, -4, -254, 214, -38, -319, -76, 139, 40, 44, -107, -168, -23, -95, 24, -49, -7, -155, -151, 77, -26, -22, -70, -89, -48, 271, -45, 106, 94, 251, 59, 64, 110, 8, 279, 57, -91, -63, -301, 0, 93, 4, -221, -137, -61, -8, 10, 24, 56, 89, 19, -13, -148, -41, -272, -114, -67, -16, -116, 42, 2, -101, -12, -41, 68, -31, 26, -186, -278, 120, -306, -360, -67, 5, -175, -45, 103, -178, -81, 90, -150, 65, -2, -222, -74, -60, -95, -32, -214, 32, -45, 51, -95, -180, 7, 17, -12, -8, -169, 68, -6, 140, 26, -58, -155, -24, -27, -202, 76, 35, 35, 213, 44, -173, 93, 224, 127, 63, -28, 138, -24, -27, -295, 65, 108, 61, 110, -137, 198, -28, 104, 266, -9, 69, -120, 246, -13, 9, -321, -149, 83, 33, -2, -27, 190, 82, -24, 27, 43, -93, -94, -172, -179, 115, -233, 69, -41, -34, 76, 61, 75, -19, 130, 29, -150, 93, -408, -3, 14, -270, 144, -25, -130, -201, -427, 48, 51, 11, -112, -15, 139, -64, -27, 148, 14, 256, 171, -59, 12, -56, -257, 85, 11, 212, -20, -23, 104, -157, 174, -9, 14, -205, -18, -249, -64, -411, 193, 20, -177, -113, -99, -110, 113, 301, -1, 69, -76, -52, -274, -151, 223, -82, -144, 23, 83, -119, -45, -53, -103, 38, 33, -19, -170, -194, -290, -33, -95, -159, 36, -168, -160, -76, 44, -33, 2, -177, 5, 19, -151, 109, -235, -100, -98, 123, 49, 74, -83, 87, -56, 33, 24, -360, 47, 32, 194, -66, 356, 190, -42, 69, -486, 126, -30, -377, -405, -42, -45, 25, 90, 8, 130, -276, 233, -163, 47, -172, 66, 37, -85, 120, -127, -120, -1, 264, 22, 60, -25, -378, -52, -138, -179, -150, -157, -9, 134, -488, -5, -155, 113, 59, 58, -26, -244, -97, 205, -206, -59, 21, 18, -214, 163, -118, 56, -209, -88, 119, -9, -130, -199}
+, {21, -39, -4, 36, -3, -141, -15, 74, 119, 11, -14, -197, -150, -225, 30, 117, -16, -53, -18, 149, 29, 102, 41, 218, 230, 41, 293, -149, -35, -144, 75, -90, 154, -33, 69, 366, 70, 45, 360, -100, 225, 47, 120, -69, 53, 1, 57, 66, 198, 73, 53, 205, -42, 146, 196, 100, 136, 88, -63, -79, 6, 15, -149, 106, 156, 53, 48, 311, -84, 138, 230, 215, 108, 58, 176, 21, 85, 3, -72, -34, 138, 40, 63, 195, 212, 160, 249, 275, 78, 139, 153, 96, -30, 81, -113, 211, -31, -66, -82, 7, -111, -205, -191, -86, 82, -196, -233, -72, 10, 21, -139, -171, 46, -27, -84, 49, 42, 132, -49, 63, -175, 15, -92, -240, 78, -100, -203, -79, 104, -54, 23, 18, -139, -58, 36, 19, 102, -16, 32, -28, -119, -257, -21, -82, 263, -119, -125, 61, -20, 162, 36, 46, -96, 150, -28, 37, 115, 0, 54, -26, -95, 41, -70, -44, -184, 79, 80, 105, -9, 74, 40, 100, 212, -3, 81, 69, 17, -45, 22, -11, -18, 91, 29, -41, -70, 154, 159, -64, 260, 229, 386, -70, -170, 123, 55, -49, -86, 16, -37, -123, 55, -119, 42, -76, 116, 64, -68, -8, -36, 71, 150, -71, 107, -70, -20, -17, -157, 12, 123, -51, -289, -138, -72, 71, -33, 90, 212, -175, 4, -11, -184, -168, -172, -129, 26, 9, -31, 107, -92, 196, 71, 9, 83, -58, -72, -20, -10, -224, 125, 9, -317, 217, 118, 242, -89, 64, -46, 86, -61, -65, -180, -16, 236, -94, -111, -22, -153, 170, 238, 147, 204, -60, -73, 37, -74, -106, -151, 70, 105, -44, -70, -43, 124, 218, 262, 196, 131, -28, -172, -34, -262, 37, -86, 69, 178, -99, -18, -48, -56, -82, 109, -98, -9, 2, -93, 90, -329, 220, -23, -28, 61, 6, -382, 50, -63, 75, 117, 60, -43, 3, 40, 77, -207, 121, 61, 25, 36, 157, -362, 161, 24, -121, 131, -387, -105, 144, -48, 134, 168, 109, 59, -278, 86, -7, 83, 194, 41, 60, -54, -187, 65, 95, -187, 111, 0, -130, 38, -87, 47, -16, -29, -167, 90, 49, 185, 139, -8, 7, -63, 69, -23, -258, -20, -229, -128, -115, -42, -131, 13, 53, 40, 148, 52, 162, 7, -103, -103, 334, -69, 37, 304, 53, 145, 115, 16, 2, -77, -167, 9, -77, 102, -255, 54, 157, -3, 123, -12, 11, 30, 143, 21, -159, -31, -312, -36, -2, -11, -299, 26, 51, 13, 153, -17, 175, 146, 204, 23, -53, -32, -107, 18, -180, -85, -11, 45, -93, 9, -171, -4, 49, -127, -227, 51, -166, 32, 86, -55, 4, -32, 128, 181, 9, 33, -189, 0, 16, 127, 55, 124, 37, -270, 40, 38, 161, 63, 86, 63, -65, 104, 26, 134, 122, 64, 81, 98, -30, -107, -25, -100, 201, 246, -123, -44, 50, -351, -93, 43, -5, 159, -48, -174, -36, -352, -27, 45, -344, 40, -337, -102, -160, -17, -102, -15, -40, 233, -83, 14, 46, -338, 30, 47, 15, -170, -167, 62, -174, -2, -217, -4, -130, -167, -336, 40, 119, -31, 181, 20, 38, -125, -9, 16, -73, 2, -208, 15, -79, -205, -124, 35, 70, 224, 90, 0, 31, 44, 143, 54, 62, 23, 174, 122, 14, 83, 73, 4, 97, 6, 96, 23, 40, 235, -36, -42, 103, 155, 74, -66, 181, 9, -215, 20, 116, 112, 200, 156, 1}
+, {164, 88, 165, 24, 217, 11, -28, 235, -47, 269, 190, -24, 88, -63, -164, 23, 446, -62, 52, 126, -17, -60, 263, -87, 68, 90, 243, 69, -80, -12, -146, 277, 116, -31, -12, 62, 99, 2, 243, 160, -30, -1, 24, 48, -6, -34, 260, 88, 41, 60, -36, -26, 248, -101, 63, 97, -42, -11, 309, 141, 57, 48, 31, 96, -145, 25, 35, -249, 220, -188, -147, -36, 68, -73, -51, 15, -32, 76, 31, 180, -73, 45, -68, -110, -120, 32, -213, -243, 6, -161, -83, 72, -67, -55, -37, -178, 156, -104, 339, 211, 56, -90, 182, 84, 20, 113, 113, 20, 48, 131, 252, 106, -251, 51, -155, -23, -202, -107, 144, -286, 104, -9, 112, 168, -130, 266, 415, 35, -37, 12, -38, 12, -55, -135, 75, -209, -97, -84, 272, 105, -62, 230, 155, 139, 101, 2, 9, -31, 50, -122, 84, 24, 103, -86, 93, -46, -210, 25, 101, -38, 151, -85, -5, 88, 54, 197, -58, -77, 145, -183, -117, -329, -458, -245, -316, -43, -12, -322, 93, 44, -24, 105, -109, 62, 1, -209, -341, -540, -268, -378, -229, -212, -121, 4, -45, 152, -423, -324, 254, -117, 20, -307, 6, 269, -94, 373, 451, -91, -297, 184, -452, -159, -394, -302, 206, -89, -72, -417, -214, 68, 150, 264, 116, -309, -315, 85, -326, -363, -206, -14, 157, -24, -707, -205, -111, 118, 266, 233, 75, -108, -2, -50, -27, 51, 23, 20, 46, 101, -218, 135, -110, -91, 136, -51, 40, -116, -47, -70, 58, 20, -86, 95, -21, 175, 48, 66, -146, -84, -50, -47, 72, -6, -276, 133, -252, -74, -288, 34, -261, -28, -44, 202, -259, -17, -3, 10, -39, -238, 61, 48, 315, -181, 143, 40, -300, -26, 243, 41, -318, -236, -10, -15, -486, 187, -189, 104, 53, -121, 11, 19, -15, -164, 42, -5, -161, -160, -1, 61, -13, 17, -306, 196, 20, -128, 15, 70, 34, 87, -163, 39, 69, 94, -47, 80, 65, 65, -105, -22, -23, -5, 138, -233, 53, 16, 64, -167, 58, 6, 60, 138, 59, 82, -16, 193, 14, -114, -9, -126, 165, 91, 12, -31, 82, 122, -110, -65, 142, 105, -119, 97, 5, 21, -67, -51, 191, 39, 101, 313, 57, -25, -131, 14, 53, 13, 421, -2, 270, 23, 123, -71, 32, -10, -169, 33, 63, -169, -71, -156, 97, 130, -19, 27, 14, -226, 66, -43, 45, -65, 37, -75, 69, 73, 11, 93, 38, 104, -135, 71, 2, 55, -43, -100, 11, -10, -65, 9, 26, 101, 11, 90, 9, 9, -47, -23, -20, 59, 74, -117, -12, 183, 19, -30, 126, 37, 42, -43, -76, 31, -56, -100, -133, 18, 65, -57, -33, 99, 13, 152, 177, 63, -56, 86, 89, 0, -153, 151, -23, -52, 185, 42, -121, 53, -64, 243, 151, 99, 92, 48, 2, -52, 168, 170, 86, 78, 196, 12, -9, 223, 1, 209, 7, -15, 61, -13, -63, 336, 164, 80, 131, 39, 51, 29, -55, -19, -257, 18, 33, 9, 91, 69, 19, 184, 63, -19, 77, 64, 81, 49, -3, 80, 207, 103, -3, -54, 95, 5, 11, -24, 62, -113, -10, 0, 77, -88, -43, 48, -24, -4, 26, -11, -60, 8, 60, -43, -81, -83, -174, -29, -119, 99, -77, 16, -86, -242, -97, -117, 80, -80, -93, -113, 19, 19, -129, -198, -44, 44, -227, -135, -258, 266, -107, -119, -40, -203, -168, -162}
+, {3, 62, -11, 48, -24, -96, 199, -188, 96, -127, 18, -52, 65, 117, 92, -1, -236, -5, 50, -48, -122, -147, 210, -100, -154, -30, -89, -133, 8, 107, 277, -8, -264, -22, 16, -288, -134, -168, -91, -182, -212, -23, -115, -173, -83, -7, -76, -11, -127, 5, 27, -231, 19, -159, -264, 64, -142, -72, -34, 159, -13, -9, 38, -2, -387, -29, 37, -163, -94, -66, -22, 46, -231, -212, 143, -22, -220, 6, 180, -97, -26, -94, -106, -172, -29, 100, -416, -69, 0, -9, -101, -52, -201, -41, 53, -206, 157, -20, -219, 190, 62, 25, 235, -122, 253, -18, 113, 242, 97, -53, 160, 5, -129, 24, -114, 236, -70, -82, 126, -56, -319, 33, -173, 177, 65, 117, 62, 8, -225, 57, 27, 77, -166, -51, 67, 23, -260, 98, 37, 132, 49, 147, 119, 47, -265, 55, 61, 8, 165, -356, 148, -6, -342, -96, 207, 117, -66, 263, 68, 95, -133, -12, 86, -383, 208, -607, 67, 171, 16, -166, 388, 172, -361, 35, -111, 68, -133, -81, 49, -53, 169, -353, -169, -85, 52, -377, -354, 63, -403, 44, -308, 26, -41, 210, -13, 36, -7, 37, 157, -153, 28, -68, 2, 118, 59, 127, 51, 12, 17, 48, 26, 45, 34, 56, -103, 12, -33, -24, -141, -19, 24, 40, 9, -62, 113, 111, 65, 6, -9, -191, -103, -31, 32, -6, 98, 9, -16, 74, 137, -21, -33, 6, -141, -154, 62, 59, 47, -123, -122, -134, 49, 69, -39, 39, 18, -25, 84, -87, 89, -20, 28, 34, -210, -77, 121, -57, 104, 48, -224, 97, 16, -52, 335, -242, 149, -49, 188, 118, -217, -67, 105, 209, -175, -345, -284, -236, -292, 113, 146, -123, -80, -49, -78, 24, -32, 108, 226, 174, 14, -84, 38, -272, -122, -29, 90, 3, -154, 51, -92, 55, 44, 60, -76, 142, 67, -42, 108, -105, -82, -14, 43, 127, 58, 24, -48, -260, 27, -143, 75, -84, 7, 9, 110, 91, -13, 23, -65, 118, -146, -33, -122, 204, -32, -133, -182, 23, -296, -189, 84, 93, -198, -43, 72, -164, -56, 55, -63, 125, -95, 35, 1, 291, -89, -320, 103, -295, -216, -182, 62, -51, -31, 118, -16, 80, 44, -35, 1, 360, -103, 9, -86, -149, 81, -118, -23, -210, -249, -40, -20, 91, -12, 115, 12, 112, -78, -89, -24, -283, -123, -80, 3, -67, -45, 48, 29, 80, -7, -47, 73, 28, -21, -112, -36, -220, -53, -17, 119, 2, -25, 63, -32, 73, 149, 21, -31, 141, -64, -50, 147, -42, 26, 16, 21, -85, -186, 65, -12, 120, 60, 111, -47, 143, -37, -144, -5, -217, 62, -241, 43, 85, -37, 19, -39, 76, 87, -61, -1, 204, 98, -5, 58, -45, 49, 70, 85, 82, -30, -15, 119, 19, 260, 6, -67, 111, 130, 128, 104, 52, 204, 45, 42, 7, 94, 112, 67, 74, 8, 125, 31, -30, -16, 85, 192, 147, -58, -123, 197, -214, 17, 136, -188, 54, 83, -55, 247, 285, -55, -46, 24, -42, -29, -101, 214, -483, -10, 63, 26, 158, -1, -29, -15, 9, -37, 27, 84, -49, -51, -145, 57, 0, 65, -7, 35, 33, -109, 44, -25, -75, 26, -31, -64, -98, -116, -136, 48, 468, 70, -318, 221, -206, -84, 28, -14, -123, 38, 172, -94, 57, -17, 268, 117, 228, 109, -92, 98, -214, 44, -68, 93, -153, 168, 282, -66, 203, 51, 156}
+}
+;
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+/**
+  ******************************************************************************
+  * @file    fc.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version V2.0
+  * @date    24 january 2023
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef _DENSE_1_H_
+#define _DENSE_1_H_
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#include <stdint.h>
+#endif
+
+#define INPUT_SAMPLES 100
+#define FC_UNITS 10
+
+typedef int16_t dense_1_output_type[FC_UNITS];
+
+#if 0
+void dense_1(
+  const number_t input[INPUT_SAMPLES], 			      // IN
+	const number_t kernel[FC_UNITS][INPUT_SAMPLES],  // IN
+
+	const number_t bias[FC_UNITS],			              // IN
+
+	number_t output[FC_UNITS]); 			                // OUT
+#endif
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+
+#endif//_DENSE_1_H_
+/**
+  ******************************************************************************
+  * @file    fc.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifndef SINGLE_FILE
+#include "dense_1.h"
+#include "number.h"
+#endif
+
+#ifdef WITH_CMSIS_NN
+#include "arm_nnfunctions.h"
+#elif defined(WITH_NMSIS_NN)
+#include "riscv_nnfunctions.h"
+#endif
+
+#define INPUT_SAMPLES 100
+#define FC_UNITS 10
+#define ACTIVATION_LINEAR
+
+// For fixed point quantization
+#define WEIGHTS_SCALE_FACTOR 9
+#define BIASES_SCALE_FACTOR 9
+#define TMP_SCALE_FACTOR 9
+#define INPUT_SCALE_FACTOR 9
+#define OUTPUT_SCALE_FACTOR 9
+#define OUTPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define NUMBER_T int16_t
+#define LONG_NUMBER_T int32_t
+
+
+static inline void dense_1(
+  const NUMBER_T input[INPUT_SAMPLES], 			      // IN
+	const NUMBER_T kernel[FC_UNITS][INPUT_SAMPLES],  // IN
+
+	const NUMBER_T bias[FC_UNITS],			              // IN
+
+	NUMBER_T output[FC_UNITS]) {			                // OUT
+
+#if !defined(WITH_CMSIS_NN) && !defined(WITH_NMSIS_NN)
+  unsigned short k, z; 
+  LONG_NUMBER_T output_acc;
+
+  for (k = 0; k < FC_UNITS; k++) { 
+    output_acc = 0;
+    for (z = 0; z < INPUT_SAMPLES; z++) 
+      output_acc = output_acc + ((LONG_NUMBER_T)kernel[k][z] * (LONG_NUMBER_T)input[z]);
+
+    output_acc = scale(NUMBER_T, output_acc, WEIGHTS_SCALE_FACTOR - TMP_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+    output_acc += scale(NUMBER_T, (LONG_NUMBER_T)bias[k], BIASES_SCALE_FACTOR - TMP_SCALE_FACTOR - INPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+
+
+    // Activation function
+#ifdef ACTIVATION_LINEAR
+    // Linear (MEANS NONE)
+    output[k] = scale_and_clamp_to(NUMBER_T, output_acc, INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+#elif defined(ACTIVATION_RELU) || defined(ACTIVATION_RELU6)
+    // ReLU
+    if (output_acc < 0) {
+      output[k] = 0;
+    } else {
+#if defined(ACTIVATION_RELU6)
+      if (output_acc > scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE)) {
+        output_acc = scale(NUMBER_T, 6, -(INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR), OUTPUT_ROUND_MODE);
+      }
+#endif
+      output[k] = scale_and_clamp_to(NUMBER_T, output_acc, INPUT_SCALE_FACTOR + TMP_SCALE_FACTOR - OUTPUT_SCALE_FACTOR, OUTPUT_ROUND_MODE);
+    }
+#else
+#error "Unsupported activation function"
+#endif
+  }
+#else
+
+#if BIASES_SCALE_FACTOR > WEIGHTS_SCALE_FACTOR
+#error "CMSIS-NN does not support BIASES_SCALE_FACTOR larger than WEIGHTS_SCALE_FACTOR"
+#endif
+
+  static q15_t bufferA[INPUT_SAMPLES];
+#ifdef WITH_CMSIS_NN
+  arm_fully_connected_q15(
+#elif defined(WITH_NMSIS_NN)
+  riscv_fully_connected_q15(
+#endif
+                             (q15_t*)input,
+                             (q15_t*)kernel,
+                             INPUT_SAMPLES,
+                             FC_UNITS,
+                             INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - BIASES_SCALE_FACTOR,
+                             INPUT_SCALE_FACTOR + WEIGHTS_SCALE_FACTOR - OUTPUT_SCALE_FACTOR,
+                             (q15_t*)bias,
+                             (q15_t*)output,
+                             (q15_t*)bufferA);
+#ifdef ACTIVATION_RELU
+#ifdef WITH_CMSIS_NN
+  arm_relu_q15((q15_t*)output, FC_UNITS);
+#elif defined(WITH_NMSIS_NN)
+  riscv_relu_q15((q15_t*)output, FC_UNITS);
+#endif
+#elif !defined(ACTIVATION_LINEAR)
+#error "Unsupported activation with CMSIS-NN"
+#endif
+
+
+#endif
+}
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+#undef ACTIVATION_LINEAR
+#undef WEIGHTS_SCALE_FACTOR
+#undef BIASES_SCALE_FACTOR
+#undef INPUT_SCALE_FACTOR
+#undef OUTPUT_SCALE_FACTOR
+#undef NUMBER_T
+#undef LONG_NUMBER_T
+/**
+  ******************************************************************************
+  * @file    weights/fc.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#include <stdint.h>
+
+#define INPUT_SAMPLES 100
+#define FC_UNITS 10
+
+
+const int16_t dense_1_bias[FC_UNITS] = {193, 5, 55, 31, 1, -293, -272, -119, 262, 62}
+;
+
+const int16_t dense_1_kernel[FC_UNITS][INPUT_SAMPLES] = {{154, 111, -384, -384, 136, -232, 104, -202, -243, -203, -56, -188, 8, -184, -246, -95, 56, -340, 77, -331, 121, -282, 75, 105, 105, -20, -172, -541, 94, -412, -245, 101, -183, -236, -118, -224, 140, 148, -327, -122, -158, -76, -296, -264, -247, -279, 60, 114, -375, -199, -175, -125, 230, 68, -372, -155, 101, 148, 60, 20, -385, 23, 149, -91, -270, 112, -95, -360, 122, -265, -127, -171, 73, 85, -468, 43, -456, -273, 191, -513, 95, -260, -114, 103, 69, -206, 155, 23, 79, -431, 94, 160, -295, 53, -226, -336, 151, -277, -199, 87}
+, {-234, -162, 46, -341, 43, 66, -464, 39, 85, -373, -179, -175, 0, -271, -225, 60, -247, 149, -456, 43, -445, 103, 87, 130, 63, -151, 205, 162, 95, 95, -58, 157, 71, 97, 140, -285, -152, -257, 118, -193, 88, -149, -198, 77, 116, -381, -459, -243, 78, -187, 139, 154, 104, -100, -147, 82, -207, 197, -118, 77, 99, -217, 137, 144, 77, -232, -171, -92, -440, 132, 95, -209, -121, -517, 144, -303, -325, -41, 0, -182, -271, -10, -360, -186, -310, -117, 210, 135, -120, 32, -329, 161, 72, -230, 197, -18, -364, 68, 8, -226}
+, {-34, 94, -171, -320, 65, 75, 64, 74, 80, -61, 34, -112, 97, -149, -341, -253, -295, 157, -329, -163, -163, 77, 92, -256, -63, -103, -316, -288, 129, -253, 145, -166, 122, -434, -10, -73, 77, -223, 118, 204, -82, 217, -102, 135, 42, -191, 24, 69, -152, 80, -121, -386, -347, 103, -137, 106, -248, -336, -66, -157, -219, 64, 81, -357, 68, -255, 92, -180, -324, 138, -186, -88, 76, 75, -290, 7, -271, -171, 165, -7, 84, 146, 45, -164, -207, -130, -448, -105, -58, -226, 83, -258, -213, 82, -276, -36, -67, 84, 110, 130}
+, {-167, -217, -245, 49, 55, 105, -124, 70, -193, -109, 87, 93, 103, 52, -204, 123, -328, -231, -263, 102, 116, -180, -234, -274, -124, 139, -156, 77, -51, 84, -78, -72, 106, -202, -316, 72, -315, -137, -149, -63, 125, -77, -204, 83, 74, 155, -87, -32, 80, -123, -359, -170, -56, 103, 104, 104, 61, -153, 16, -355, -289, -192, -179, -231, 103, -270, 81, -27, -214, 109, 127, -267, -110, -129, -57, 64, 54, 165, -319, 88, 140, 18, -251, -109, 44, -145, -321, -142, -210, 76, -28, -267, -172, 82, -342, 146, -164, -109, 122, -53}
+, {-337, 103, 87, 68, 77, -207, -282, -159, 116, 168, 16, 0, 104, -306, 124, -7, 103, -134, -175, -179, -212, 22, 92, 67, 74, -188, -195, -79, -246, 28, 142, 144, -284, -61, 159, -245, -309, -127, 160, -153, -273, -296, 105, -343, 114, -456, -45, 106, -147, -204, 162, -299, -308, -341, 83, -337, -188, -234, -10, 68, 149, 155, -342, -98, -275, 150, -409, -120, -123, -251, -98, 33, -201, 152, 131, -346, 84, -125, -110, 105, -264, -44, 81, -215, -279, 135, -326, -290, -144, 64, -146, -292, 76, -331, 181, 137, -269, -69, -33, -55}
+, {82, -113, -198, 56, -226, -172, 54, 66, -362, 95, -216, -49, -306, 81, 117, -196, 111, -171, 107, 122, 159, -251, -104, 49, -75, 4, 201, 91, -355, 96, -111, -356, -300, 89, -24, 112, -129, 18, -616, -127, -189, -21, 39, -38, 102, 184, 116, 64, -362, 145, -220, -63, -217, -185, 122, 94, 109, 124, 21, -327, -438, -112, -247, 98, 79, -176, -261, -82, 110, -189, 128, -16, -214, -132, 151, 70, 59, -195, -164, -23, -152, -178, 6, -198, 50, 126, 106, -28, 98, 78, -7, 25, -119, 90, -255, -63, -145, 56, -189, -188}
+, {129, 125, -435, -322, -260, 74, -226, -387, -286, -95, 125, 87, -203, -360, 155, -346, 133, -36, 87, -397, 58, 71, 122, 137, -59, -306, -185, -291, -287, 51, -269, -164, -303, 103, 163, -400, -92, 151, -87, -150, 76, 174, -221, -241, -80, 127, -240, 106, -406, 118, 174, -168, -166, -187, -450, -237, 64, 102, 115, 85, -9, -161, -107, -268, 102, 159, -619, -612, 122, -183, 126, 58, 126, -314, -102, -184, -471, -517, -179, -387, -351, -441, 86, 70, 53, -160, 30, 97, 125, -190, -299, 111, -400, 97, -170, -398, -129, 77, -210, -307}
+, {-236, -83, 92, -87, -95, 42, 42, -280, 19, -205, -308, 86, -151, 80, -140, -48, -31, -143, -38, -86, -17, 103, -250, -254, -32, 95, 181, -71, -20, -202, 42, 118, 102, -246, -456, 66, 105, 83, 123, 26, -8, -166, 109, 115, -160, -341, 147, -233, 108, -237, -205, -188, -7, 55, 108, 107, 102, 15, -34, -391, 129, -139, 53, -253, 45, -100, 64, 167, 149, 127, -316, 53, -493, -97, -61, -249, -130, 144, -160, 111, 122, 142, -231, 142, -314, 167, -67, -329, -300, -151, 36, 120, 103, -306, -252, 148, -397, -227, 173, 124}
+, {103, -162, 70, 52, -115, -137, -176, -16, 81, -147, 61, -1, 76, 77, 78, -188, 78, -225, -114, -265, -129, 31, 79, 91, -22, -235, -154, -271, 79, -172, -133, 13, 96, 106, -122, 47, -269, 142, -204, 192, 169, 6, 111, -292, -148, -32, -168, 36, -151, -77, -187, 185, 62, -188, -127, -230, -182, -126, 23, -184, -183, 144, -235, -197, 94, -217, 30, -193, -107, -232, 94, -283, -194, -179, -180, 62, 53, -92, -192, 102, 90, 119, -295, -170, 66, 10, -97, 151, 103, 71, 71, 84, -102, 83, -135, -256, 141, 79, -153, 1}
+, {52, -243, 76, 74, 26, -394, -223, 88, 123, 124, 43, -352, -1, -101, 116, 91, 89, -102, -147, 81, -166, -254, -240, -269, -92, 118, -168, 62, 103, 22, -271, -106, -7, -5, -142, 58, -279, -246, -155, -298, -251, -462, 104, -390, -176, -120, 136, 46, 108, -72, -117, -104, 141, -221, 94, -107, -27, -52, -106, -170, 113, 142, -303, -189, -252, 162, 42, 151, -117, -369, 78, 9, -178, 126, 117, 45, 97, 155, -25, -78, -96, -215, 85, 137, -87, -113, -110, -325, -190, 64, -58, -215, 101, 62, 127, 110, -122, -226, -334, 136}
+}
+;
+
+#undef INPUT_SAMPLES
+#undef FC_UNITS
+/**
+  ******************************************************************************
+  * @file    model.hh
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    08 july 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef __MODEL_H__
+#define __MODEL_H__
+
+#ifndef SINGLE_FILE
+#include "number.h"
+
+ // InputLayer is excluded
+#include "conv2d.h" // InputLayer is excluded
+#include "conv2d_1.h" // InputLayer is excluded
+#include "flatten.h" // InputLayer is excluded
+#include "dense.h" // InputLayer is excluded
+#include "dense_1.h"
+#endif
+
+
+#define MODEL_INPUT_DIM_0 28
+#define MODEL_INPUT_DIM_1 28
+#define MODEL_INPUT_DIM_2 1
+#define MODEL_INPUT_DIMS 28 * 28 * 1
+
+#define MODEL_OUTPUT_SAMPLES 10
+
+#define MODEL_INPUT_SCALE_FACTOR 9 // scale factor of InputLayer
+#define MODEL_INPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define MODEL_INPUT_NUMBER_T int16_t
+#define MODEL_INPUT_LONG_NUMBER_T int32_t
+
+#define MODEL_OUTPUT_SCALE_FACTOR 9 // scale factor of last layer
+#define MODEL_OUTPUT_ROUND_MODE ROUND_MODE_FLOOR
+#define MODEL_OUTPUT_NUMBER_T int16_t
+#define MODEL_OUTPUT_LONG_NUMBER_T int32_t
+
+// node 0 is InputLayer so use its output shape as input shape of the model
+// typedef  input_t[28][28][1];
+typedef int16_t input_t[28][28][1];
+typedef dense_1_output_type output_t;
+
+
+void cnn(
+  const input_t input,
+  output_t output);
+
+void reset(void);
+
+#endif//__MODEL_H__
+
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
+/**
+  ******************************************************************************
+  * @file    model.cc
+  * @author  Pierre-Emmanuel Novac <penovac@unice.fr>, LEAT, CNRS, Université Côte d'Azur, France
+  * @version 1.0.0
+  * @date    24 march 2020
+  * @brief   Template generating plain C code for the implementation of Convolutional Neural Networks on MCU
+  */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef SINGLE_FILE
+#include "number.h"
+#include "model.h"
+// #include <chrono>
+
+ // InputLayer is excluded
+#include "conv2d.c"
+#include "weights/conv2d.c" // InputLayer is excluded
+#include "conv2d_1.c"
+#include "weights/conv2d_1.c" // InputLayer is excluded
+#include "flatten.c" // InputLayer is excluded
+#include "dense.c"
+#include "weights/dense.c" // InputLayer is excluded
+#include "dense_1.c"
+#include "weights/dense_1.c"
+#endif
+
+
+void cnn(
+  const input_t input,
+  dense_1_output_type dense_1_output) {
+  
+  // Output array allocation
+  static union {
+    conv2d_output_type conv2d_output;
+    dense_output_type dense_output;
+  } activations1;
+
+  static union {
+    conv2d_1_output_type conv2d_1_output;
+    flatten_output_type flatten_output;
+  } activations2;
+
+
+// Model layers call chain 
+  
+  
+  conv2d( // Model input is passed as model parameter
+    input,
+    conv2d_kernel,
+    conv2d_bias,
+    activations1.conv2d_output
+    );
+  
+  
+  conv2d_1(
+    activations1.conv2d_output,
+    conv2d_1_kernel,
+    conv2d_1_bias,
+    activations2.conv2d_1_output
+    );
+  
+  
+  flatten(
+    activations2.conv2d_1_output,
+    activations2.flatten_output
+    );
+  
+  
+  dense(
+    activations2.flatten_output,
+    dense_kernel,
+    dense_bias,
+    activations1.dense_output
+    );
+  
+  
+  dense_1(
+    activations1.dense_output,
+    dense_1_kernel,
+    dense_1_bias,// Last layer uses output passed as model parameter
+    dense_1_output
+    );
+}
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
